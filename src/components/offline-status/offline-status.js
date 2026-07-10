@@ -11,7 +11,7 @@ export function createOfflineStatus(mountPoint) {
   const render = () => {
     const online = navigator.onLine;
     status.dataset.state = online ? 'online' : 'offline';
-    status.textContent = online ? 'Online' : 'Offline';
+    status.textContent = online ? 'Online' : 'Offline mode';
   };
 
   window.addEventListener('online', render);

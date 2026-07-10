@@ -21,9 +21,9 @@ export function assetLibraryPage() {
 
   return createPageShell({
     eyebrow: 'Local assets',
-    title: 'Asset library',
+    title: 'Assets',
     description:
-      'Asset folders are separated by purpose so future import, sync, compression, and indexing features stay clean.',
+      'Keep references, patterns, colors, and templates in a tidy offline library prepared for future import tools.',
     body: `<div class="asset-grid">${cards}</div>`,
   });
 }

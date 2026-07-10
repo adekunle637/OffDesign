@@ -1,8 +1,9 @@
-const CACHE_VERSION = 'offdesign-v1';
+const CACHE_VERSION = 'offdesign-v2';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-app-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
+const GENERATED_PRECACHE = '__OFFDESIGN_PRECACHE__';
 
-const APP_SHELL_ASSETS = [
+const APP_SHELL_ASSETS = [...new Set([
   '/',
   '/index.html',
   '/offline.html',
@@ -11,7 +12,8 @@ const APP_SHELL_ASSETS = [
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-];
+  ...(GENERATED_PRECACHE === '__OFFDESIGN_PRECACHE__' ? [] : JSON.parse(GENERATED_PRECACHE)),
+])];
 
 const STATIC_DESTINATIONS = new Set(['style', 'script', 'worker', 'font', 'image']);
 

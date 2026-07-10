@@ -4,15 +4,22 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-xs);
 }
 
 .surface-card {
   display: grid;
   gap: var(--space-3);
   align-content: start;
-  min-height: 13rem;
+  min-height: 11rem;
   padding: var(--space-5);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.surface-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-2px);
 }
 
 .surface-card h2,

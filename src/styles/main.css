@@ -5,6 +5,8 @@
 @import url('./components/brand.css');
 @import url('./components/button.css');
 @import url('./components/card.css');
+@import url('./components/dialog.css');
+@import url('./components/form.css');
 @import url('./components/network-status.css');
 @import url('./pages/page.css');
 @import url('./utilities/a11y.css');

@@ -1,0 +1,135 @@
+dialog {
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+}
+
+dialog::backdrop {
+  background: rgb(15 18 28 / 44%);
+  backdrop-filter: blur(5px);
+}
+
+.command-dialog {
+  width: min(38rem, calc(100% - 2rem));
+  margin: min(17vh, 10rem) auto auto;
+}
+
+.command-dialog__surface,
+.notification-dialog__surface {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+}
+
+.command-dialog__search {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.75rem 0.8rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-ink-muted);
+}
+
+.command-dialog__search > svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.command-dialog__search .icon-button {
+  width: 2rem;
+  height: 2rem;
+}
+
+.command-dialog__content {
+  padding: 0.85rem;
+}
+
+.command-dialog__label,
+.command-empty {
+  margin: 0 0 0.55rem;
+  color: var(--color-ink-muted);
+  font-size: 0.71rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-list {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.command-item {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr auto;
+  gap: 0.7rem;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 0.65rem;
+  color: var(--color-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.command-item:hover,
+.command-item:focus-visible {
+  background: var(--color-accent-soft);
+}
+
+.command-item > svg {
+  width: 1rem;
+  color: var(--color-accent-strong);
+}
+
+.command-item__arrow {
+  color: var(--color-ink-muted) !important;
+}
+
+.notification-dialog {
+  width: min(26rem, calc(100% - 2rem));
+  margin: 5.5rem 2rem auto auto;
+}
+
+.notification-dialog__surface {
+  padding: var(--space-5);
+}
+
+.dialog-heading {
+  display: flex;
+  gap: var(--space-4);
+  align-items: start;
+  justify-content: space-between;
+}
+
+.dialog-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.notification-empty {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding: 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-mint-soft);
+  color: var(--color-ink);
+}
+
+.notification-empty svg {
+  width: 1rem;
+  color: #258760;
+}
+
+.notification-empty p {
+  margin: 0;
+  font-size: 0.86rem;
+}

@@ -5,9 +5,9 @@ export function createInstallPrompt(mountPoint) {
 
   let installEvent;
   const button = document.createElement('button');
-  button.className = 'button button--secondary install-button';
+  button.className = 'button button--secondary button--compact install-button';
   button.type = 'button';
-  button.textContent = 'Install';
+  button.textContent = 'Install app';
   button.hidden = true;
 
   window.addEventListener('beforeinstallprompt', (event) => {
