@@ -1,0 +1,22 @@
+.brand {
+  display: inline-flex;
+  gap: var(--space-3);
+  align-items: center;
+  color: var(--color-ink);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.brand__mark {
+  display: inline-grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.brand__name {
+  letter-spacing: 0;
+}

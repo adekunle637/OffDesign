@@ -1,0 +1,43 @@
+.surface-card,
+.empty-state,
+.module-placeholder {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.surface-card {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-height: 13rem;
+  padding: var(--space-5);
+}
+
+.surface-card h2,
+.empty-state h2,
+.module-placeholder h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.surface-card p,
+.empty-state p,
+.module-placeholder p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  line-height: 1.6;
+}
+
+.empty-state,
+.module-placeholder {
+  padding: var(--space-6);
+}
+
+.module-placeholder {
+  min-height: 24rem;
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+}

@@ -1,0 +1,32 @@
+{
+  "name": "offdesign",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first PWA foundation for a clothing design application.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "keywords": [
+    "pwa",
+    "offline-first",
+    "fashion",
+    "design-tool"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "eslint": "^9.30.1",
+    "globals": "^15.15.0",
+    "prettier": "^3.6.2",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.4"
+  }
+}
