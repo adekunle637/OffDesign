@@ -22,7 +22,7 @@ export const navigationGroups = [
     label: 'System',
     items: [
       { label: 'Export', path: '/export', icon: 'download' },
-      { label: 'Settings', path: '/settings', icon: 'settings-2' },
+      { label: 'Settings', path: '/settings', icon: 'settings', action: 'settings' },
       { label: 'Help', path: '/help', icon: 'circle-help' },
     ],
   },

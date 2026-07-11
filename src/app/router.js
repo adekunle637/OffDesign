@@ -47,6 +47,12 @@ export class Router {
     const normalizedPath = this.normalizePath(path);
     const route = this.routeMap.get(normalizedPath) ?? this.routeMap.get('*');
 
+    if (route.redirect) {
+      route.onEnter?.();
+      this.navigate(route.redirect);
+      return;
+    }
+
     document.title = route.title ? `${route.title} | OffDesign` : 'OffDesign';
     this.outlet.replaceChildren(route.render());
     this.syncNavigation(normalizedPath);

@@ -1,5 +1,5 @@
 body {
-  min-width: 320px;
+  min-width: 280px;
   overflow-x: hidden;
   background: var(--color-paper);
   color: var(--color-ink);
@@ -7,6 +7,16 @@ body {
   font-size: 0.9375rem;
   line-height: 1.5;
   text-rendering: optimizeLegibility;
+}
+
+p,
+h1,
+h2,
+h3,
+small,
+strong,
+span {
+  overflow-wrap: anywhere;
 }
 
 a {

@@ -1,5 +1,7 @@
 import { navigationGroups, quickSearchItems } from '../../config/navigation.config.js';
-import { getActiveTheme, setTheme } from '../../services/theme.service.js';
+import { initializeNotificationCenter, notificationCenterMarkup } from '../notification-center/notification-center.js';
+import { initializeSettingsDrawer, settingsDrawerMarkup } from '../settings-drawer/settings-drawer.js';
+import { notifyOfflineMode, notifyUpdateAvailable } from '../../services/notification.service.js';
 
 export function createAppShell() {
   const shell = document.createElement('div');
@@ -7,10 +9,6 @@ export function createAppShell() {
   shell.dataset.sidebar = window.matchMedia('(max-width: 760px)').matches
     ? 'collapsed'
     : readSidebarState();
-  shell.classList.toggle(
-    'app-shell--context-collapsed',
-    window.matchMedia('(max-width: 1170px)').matches,
-  );
 
   const navigation = navigationGroups
     .map(
@@ -21,11 +19,15 @@ export function createAppShell() {
             ${group.items
               .map(
                 (item) => `
-                  <a class="sidebar-link" href="${item.path}" data-route title="${item.label}">
+                ${
+                  item.action === 'settings'
+                    ? `<button class="sidebar-link" type="button" data-settings-open title="${item.label}">`
+                    : `<a class="sidebar-link" href="${item.path}" data-route title="${item.label}">`
+                }
                     <i data-lucide="${item.icon}"></i>
                     <span class="sidebar-link__label">${item.label}</span>
                     ${item.badge ? `<span class="sidebar-link__badge">${item.badge}</span>` : ''}
-                  </a>
+                ${item.action === 'settings' ? '</button>' : '</a>'}
                 `,
               )
               .join('')}
@@ -38,11 +40,15 @@ export function createAppShell() {
   const searchItems = quickSearchItems
     .map(
       (item) => `
-        <a class="command-item" href="${item.path}" data-route data-search-item data-search-name="${item.label.toLowerCase()}">
+        ${
+          item.action === 'settings'
+            ? `<button class="command-item" type="button" data-settings-open data-search-item data-search-name="${item.label.toLowerCase()}">`
+            : `<a class="command-item" href="${item.path}" data-route data-search-item data-search-name="${item.label.toLowerCase()}">`
+        }
           <i data-lucide="${item.icon}"></i>
           <span>${item.label}</span>
           <i class="command-item__arrow" data-lucide="arrow-up-right"></i>
-        </a>
+        ${item.action === 'settings' ? '</button>' : '</a>'}
       `,
     )
     .join('');
@@ -69,15 +75,12 @@ export function createAppShell() {
         <div data-install-prompt></div>
         <button class="icon-button" type="button" data-notifications-open aria-haspopup="dialog" aria-label="View notifications">
           <i data-lucide="bell"></i>
-          <span class="notification-dot" aria-hidden="true"></span>
+          <span class="notification-dot" data-notification-dot aria-hidden="true"></span>
         </button>
-        <button class="icon-button" type="button" data-theme-toggle aria-label="Change theme" title="Change theme">
-          <i data-lucide="sun"></i>
+        <button class="icon-button" type="button" data-settings-open aria-controls="settings-drawer" aria-expanded="false" aria-label="Open settings" title="Settings">
+          <i data-lucide="settings"></i>
         </button>
-        <button class="icon-button" type="button" data-context-toggle aria-controls="workspace-context" aria-expanded="true" aria-label="Toggle quick settings">
-          <i data-lucide="sliders-horizontal"></i>
-        </button>
-        <button class="profile-button" type="button" aria-label="Profile placeholder: Ada">
+        <button class="profile-button" type="button" data-settings-open aria-label="Open profile settings for Ada">
           <span>AD</span>
         </button>
       </div>
@@ -87,9 +90,8 @@ export function createAppShell() {
       <aside class="app-sidebar" id="primary-navigation" aria-label="Main navigation">
         <div class="app-sidebar__top">
           <p class="workspace-label"><span class="workspace-label__dot"></span> Personal workspace</p>
-          <button class="sidebar-collapse-button" type="button" data-sidebar-toggle>
+          <button class="sidebar-collapse-button" type="button" data-sidebar-toggle aria-label="Collapse navigation" title="Collapse navigation">
             <i data-lucide="panel-left-close"></i>
-            <span>Collapse</span>
           </button>
         </div>
         <nav class="sidebar-nav">
@@ -101,42 +103,6 @@ export function createAppShell() {
         </div>
       </aside>
       <main id="main-content" class="app-main" data-router-outlet tabindex="-1"></main>
-      <aside class="context-panel" id="workspace-context" aria-label="Quick settings">
-        <div class="context-panel__header">
-          <div>
-            <p class="eyebrow">Workspace</p>
-            <h2>Quick settings</h2>
-          </div>
-          <button class="icon-button context-panel__close" type="button" data-context-toggle aria-label="Close quick settings">
-            <i data-lucide="x"></i>
-          </button>
-        </div>
-        <div class="context-panel__content">
-          <section class="context-card context-card--theme">
-            <div class="context-card__icon"><i data-lucide="sun"></i></div>
-            <div>
-              <h3>Appearance</h3>
-              <p data-theme-label>System theme</p>
-            </div>
-            <button class="text-button" type="button" data-theme-toggle>Change</button>
-          </section>
-          <section class="context-card">
-            <div class="context-card__icon"><i data-lucide="wifi"></i></div>
-            <div>
-              <h3>Local workspace</h3>
-              <p>Changes stay on this device.</p>
-            </div>
-          </section>
-          <section class="context-tip">
-            <i data-lucide="sparkles"></i>
-            <div>
-              <strong>Make it yours</strong>
-              <p>Set your visual preferences before starting a project.</p>
-              <a href="/settings" data-route>Open preferences <i data-lucide="arrow-up-right"></i></a>
-            </div>
-          </section>
-        </div>
-      </aside>
     </div>
     <footer class="status-bar" aria-label="Application status">
       <div class="status-bar__item"><span class="status-indicator" aria-hidden="true"></span><span data-save-status>Ready — changes save locally</span></div>
@@ -161,30 +127,21 @@ export function createAppShell() {
         </div>
       </div>
     </dialog>
-    <dialog class="notification-dialog" data-notifications-dialog aria-labelledby="notification-title">
-      <div class="notification-dialog__surface">
-        <div class="dialog-heading">
-          <div>
-            <p class="eyebrow">Updates</p>
-            <h2 id="notification-title">You're all caught up</h2>
-          </div>
-          <button class="icon-button" type="button" data-dialog-close aria-label="Close notifications"><i data-lucide="x"></i></button>
-        </div>
-        <div class="notification-empty"><i data-lucide="check"></i><p>OffDesign is ready for your next idea.</p></div>
-      </div>
-    </dialog>
+    ${notificationCenterMarkup()}
+    ${settingsDrawerMarkup()}
   `;
 
   bindShellEvents(shell);
   syncSidebarToggle(shell);
-  syncContextPanel(shell);
+  initializeNotificationCenter(shell);
+  initializeSettingsDrawer(shell);
   return shell;
 }
 
 function bindShellEvents(shell) {
   shell.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
-    const action = target?.closest('[data-sidebar-toggle], [data-sidebar-close], [data-context-toggle], [data-search-open], [data-notifications-open], [data-dialog-close], [data-theme-toggle]');
+    const action = target?.closest('[data-sidebar-toggle], [data-sidebar-close], [data-search-open], [data-notifications-open], [data-dialog-close]');
 
     if (action?.hasAttribute('data-sidebar-toggle')) {
       toggleSidebar(shell);
@@ -192,11 +149,6 @@ function bindShellEvents(shell) {
 
     if (action?.hasAttribute('data-sidebar-close')) {
       closeSidebar(shell);
-    }
-
-    if (action?.hasAttribute('data-context-toggle')) {
-      shell.classList.toggle('app-shell--context-collapsed');
-      syncContextPanel(shell);
     }
 
     if (action?.hasAttribute('data-search-open')) {
@@ -211,11 +163,7 @@ function bindShellEvents(shell) {
       action.closest('dialog')?.close();
     }
 
-    if (action?.hasAttribute('data-theme-toggle')) {
-      void cycleTheme();
-    }
-
-    if (target?.closest('a[data-route]')) {
+    if (target?.closest('a[data-route], [data-settings-open]')) {
       closeSidebar(shell);
       shell.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
     }
@@ -231,12 +179,11 @@ function bindShellEvents(shell) {
     }
   });
 
-  window.addEventListener('offdesign:themechange', () => syncThemeLabel(shell));
   window.addEventListener('resize', () => {
     syncSidebarToggle(shell);
-    syncContextPanel(shell);
   });
-  syncThemeLabel(shell);
+  window.addEventListener('offline', notifyOfflineMode);
+  window.addEventListener('offdesign:update-ready', notifyUpdateAvailable);
 }
 
 function toggleSidebar(shell) {
@@ -268,19 +215,6 @@ function syncSidebarToggle(shell) {
   document.body.classList.toggle('has-navigation-drawer', mobile && isExpanded);
 }
 
-function syncContextPanel(shell) {
-  const overlayMode = window.matchMedia('(max-width: 1170px)').matches;
-  const isExpanded = !shell.classList.contains('app-shell--context-collapsed');
-  const button = shell.querySelector('[data-context-toggle][aria-controls]');
-  button?.setAttribute('aria-expanded', String(isExpanded));
-
-  const panel = shell.querySelector('.context-panel');
-  if (panel) {
-    panel.inert = overlayMode && !isExpanded;
-    panel.setAttribute('aria-hidden', String(overlayMode && !isExpanded));
-  }
-}
-
 function filterSearchItems(shell, query) {
   const normalizedQuery = query.trim().toLowerCase();
   const items = [...shell.querySelectorAll('[data-search-item]')];
@@ -302,21 +236,6 @@ function openDialog(dialog, focusSelector) {
 
   const field = focusSelector ? dialog?.querySelector(focusSelector) : null;
   window.setTimeout(() => field?.focus(), 0);
-}
-
-async function cycleTheme() {
-  const themes = ['system', 'dark', 'light'];
-  const nextTheme = themes[(themes.indexOf(getActiveTheme()) + 1) % themes.length];
-  await setTheme(nextTheme);
-}
-
-function syncThemeLabel(shell) {
-  const theme = getActiveTheme();
-  const label = theme === 'system' ? 'System theme' : `${theme[0].toUpperCase()}${theme.slice(1)} theme`;
-  shell.querySelectorAll('[data-theme-label]').forEach((node) => {
-    node.textContent = label;
-  });
-  shell.querySelector('[data-theme-toggle][aria-label]')?.setAttribute('aria-label', `Theme: ${label}. Change theme`);
 }
 
 function readSidebarState() {

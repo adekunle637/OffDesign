@@ -36,7 +36,7 @@
   max-width: 11ch;
   color: var(--color-ink-strong);
   font-family: var(--font-display);
-  font-size: clamp(3.2rem, 7vw, 5.5rem);
+  font-size: clamp(2.35rem, 6vw, 5.25rem);
   font-weight: 500;
   letter-spacing: -0.07em;
   line-height: 0.9;
@@ -45,8 +45,8 @@
 .page-header__description {
   margin: 1.15rem 0 0;
   color: var(--color-ink-muted);
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: clamp(0.94rem, 1.6vw, 1.05rem);
+  line-height: 1.68;
 }
 
 .dashboard {
@@ -480,14 +480,22 @@
   line-height: 1.55;
 }
 
-.welcome-card a {
+.welcome-card a,
+.welcome-card__link {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--color-mint);
   font-size: 0.76rem;
   font-weight: 800;
   text-decoration: none;
 }
 
-.welcome-card a svg {
+.welcome-card a svg,
+.welcome-card__link svg {
   display: inline;
   width: 0.8rem;
   vertical-align: -0.14em;
@@ -989,7 +997,7 @@
   }
 
   .dashboard-hero__copy h1 {
-    font-size: clamp(3.5rem, 16vw, 5.2rem);
+    font-size: clamp(2.85rem, 14vw, 4.2rem);
   }
 
   .hero-art {

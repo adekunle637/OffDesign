@@ -16,6 +16,35 @@ export async function setSetting(key, value) {
   return record;
 }
 
+export async function getAllSettings() {
+  return withStore(storeNames.settings, 'readonly', (store) => requestToPromise(store.getAll()));
+}
+
+export async function restoreSettings(records) {
+  const validRecords = Array.isArray(records)
+    ? records.filter(
+        (record) =>
+          record && typeof record.key === 'string' && Object.hasOwn(record, 'value'),
+      )
+    : [];
+
+  if (!validRecords.length) {
+    return 0;
+  }
+
+  await withStore(storeNames.settings, 'readwrite', (store) => {
+    validRecords.forEach((record) => {
+      store.put({
+        key: record.key,
+        value: record.value,
+        updatedAt: record.updatedAt ?? new Date().toISOString(),
+      });
+    });
+  });
+
+  return validRecords.length;
+}
+
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);

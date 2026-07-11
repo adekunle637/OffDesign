@@ -76,7 +76,7 @@ export function dashboardPage() {
           <p class="eyebrow">Private by default</p>
           <h2>Your work lives with you.</h2>
           <p>OffDesign keeps your workspace local and ready even when the connection disappears.</p>
-          <a href="/settings" data-route>Explore offline storage <i data-lucide="arrow-up-right"></i></a>
+          <button class="welcome-card__link" type="button" data-settings-open>Explore offline storage <i data-lucide="arrow-up-right"></i></button>
         </aside>
       </section>
 

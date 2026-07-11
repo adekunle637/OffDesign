@@ -17,6 +17,22 @@ export async function saveDesignMetadata(design) {
   return record;
 }
 
+export async function restoreDesignMetadata(designs) {
+  const validDesigns = Array.isArray(designs)
+    ? designs.filter((design) => design && typeof design.id === 'string')
+    : [];
+
+  if (!validDesigns.length) {
+    return 0;
+  }
+
+  await withStore(storeNames.designs, 'readwrite', (store) => {
+    validDesigns.forEach((design) => store.put(design));
+  });
+
+  return validDesigns.length;
+}
+
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);

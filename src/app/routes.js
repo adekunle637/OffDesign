@@ -4,7 +4,6 @@ import { designsPage } from '../pages/designs.page.js';
 import { editorPlaceholderPage } from '../pages/editor-placeholder.page.js';
 import { libraryPlaceholderPage } from '../pages/library-placeholder.page.js';
 import { notFoundPage } from '../pages/not-found.page.js';
-import { settingsPage } from '../pages/settings.page.js';
 
 export const routes = [
   {
@@ -120,7 +119,8 @@ export const routes = [
   {
     path: '/settings',
     title: 'Settings',
-    render: settingsPage,
+    redirect: '/',
+    onEnter: () => window.dispatchEvent(new CustomEvent('offdesign:open-settings')),
     nav: false,
   },
   {

@@ -8,5 +8,7 @@
 @import url('./components/dialog.css');
 @import url('./components/form.css');
 @import url('./components/network-status.css');
+@import url('./components/notification-center.css');
+@import url('./components/settings-drawer.css');
 @import url('./pages/page.css');
 @import url('./utilities/a11y.css');
