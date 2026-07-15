@@ -5,6 +5,10 @@ export async function listDesigns() {
   return withStore(storeNames.designs, 'readonly', (store) => requestToPromise(store.getAll()));
 }
 
+export async function getDesign(id) {
+  return withStore(storeNames.designs, 'readonly', (store) => requestToPromise(store.get(id)));
+}
+
 export async function saveDesignMetadata(design) {
   const timestamp = new Date().toISOString();
   const record = {

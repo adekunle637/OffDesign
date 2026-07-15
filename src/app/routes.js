@@ -4,6 +4,8 @@ import { designsPage } from '../pages/designs.page.js';
 import { editorPlaceholderPage } from '../pages/editor-placeholder.page.js';
 import { libraryPlaceholderPage } from '../pages/library-placeholder.page.js';
 import { notFoundPage } from '../pages/not-found.page.js';
+import { templateLibraryPage } from '../pages/template-library.page.js';
+import { workspacePage } from '../pages/workspace.page.js';
 
 export const routes = [
   {
@@ -16,40 +18,19 @@ export const routes = [
   {
     path: '/design-clothes',
     title: 'Design Clothes',
-    render: () =>
-      libraryPlaceholderPage({
-        eyebrow: 'Creative module',
-        title: 'Design Clothes',
-        icon: 'shirt',
-        details: 'Your digital atelier is being prepared.',
-        actionLabel: 'Editor intentionally deferred',
-      }),
+    render: () => workspacePage('clothes'),
     nav: false,
   },
   {
     path: '/create-logo',
     title: 'Create Logo',
-    render: () =>
-      libraryPlaceholderPage({
-        eyebrow: 'Creative module',
-        title: 'Create Logo',
-        icon: 'sparkles',
-        details: 'A focused identity workspace is on its way.',
-        actionLabel: 'Logo tools intentionally deferred',
-      }),
+    render: () => workspacePage('logo'),
     nav: false,
   },
   {
     path: '/sketch-diagram',
     title: 'Sketch Diagram',
-    render: () =>
-      libraryPlaceholderPage({
-        eyebrow: 'Creative module',
-        title: 'Sketch Diagram',
-        icon: 'pen-line',
-        details: 'A calm surface for visual thinking is being prepared.',
-        actionLabel: 'Sketch tools intentionally deferred',
-      }),
+    render: () => workspacePage('sketch'),
     nav: false,
   },
   {
@@ -61,14 +42,7 @@ export const routes = [
   {
     path: '/templates',
     title: 'Clothing Templates',
-    render: () =>
-      libraryPlaceholderPage({
-        eyebrow: 'Starting points',
-        title: 'Clothing Templates',
-        icon: 'layout-template',
-        details: 'A reusable wardrobe of starting points is taking shape.',
-        actionLabel: 'Template library prepared',
-      }),
+    render: templateLibraryPage,
     nav: false,
   },
   {

@@ -10,5 +10,6 @@
 @import url('./components/network-status.css');
 @import url('./components/notification-center.css');
 @import url('./components/settings-drawer.css');
+@import url('./components/design-workspace.css');
 @import url('./pages/page.css');
 @import url('./utilities/a11y.css');
