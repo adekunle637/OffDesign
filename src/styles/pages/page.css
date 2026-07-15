@@ -698,6 +698,7 @@
 }
 
 .template-library-page__preview svg { width: 1.15rem; }
+.template-library-page__preview img { width: 86%; height: 86%; object-fit: contain; }
 .template-library-page__card strong, .template-library-page__card small { display: block; }
 .template-library-page__card strong { overflow: hidden; font-size: 0.69rem; text-overflow: ellipsis; white-space: nowrap; }
 .template-library-page__card small { margin-top: 0.12rem; color: var(--color-ink-muted); font-size: 0.58rem; }

@@ -19,7 +19,7 @@ export function templateLibraryPage() {
             <div class="template-library-page__grid">
               ${templatesForCategory(category.id).map((template) => `
                 <a class="template-library-page__card" href="/design-clothes" data-route data-pending-template="${template.id}" style="--template-accent:${template.accent}">
-                  <span class="template-library-page__preview"><i data-lucide="${template.icon}"></i></span><span><strong>${template.name}</strong><small>Editable placeholder</small></span><i data-lucide="arrow-up-right"></i>
+                  <span class="template-library-page__preview"><img src="${template.asset}" alt="" /></span><span><strong>${template.name}</strong><small>Open-source vector</small></span><i data-lucide="arrow-up-right"></i>
                 </a>`).join('')}
             </div>
           </section>`).join('')}

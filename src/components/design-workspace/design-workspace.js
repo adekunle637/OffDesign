@@ -998,7 +998,7 @@ class DesignWorkspace {
     return `
       <div class="workspace-template-categories">${clothingTemplateCategories.map((category) => `<button class="workspace-template-category ${category.id === this.state.templateCategory ? 'is-active' : ''}" type="button" data-template-category="${category.id}"><i data-lucide="${category.icon}"></i>${category.label}</button>`).join('')}</div>
       <p class="workspace-panel-note">Drag a template directly onto the artboard, or tap to add it in the centre.</p>
-      <div class="workspace-template-grid">${templates.map((template) => `<button class="workspace-template-card" type="button" draggable="true" data-template-id="${template.id}" style="--template-accent:${template.accent}"><span class="workspace-template-card__preview template-shape--${template.shape}"><i data-lucide="${template.icon}"></i></span><strong>${template.name}</strong><small>Placeholder</small></button>`).join('')}</div>
+      <div class="workspace-template-grid">${templates.map((template) => `<button class="workspace-template-card" type="button" draggable="true" data-template-id="${template.id}" style="--template-accent:${template.accent}"><span class="workspace-template-card__preview template-shape--${template.shape}"><img src="${template.asset}" alt="" draggable="false" /></span><strong>${template.name}</strong><small>Open-source vector</small></button>`).join('')}</div>
     `;
   }
 
@@ -1102,6 +1102,7 @@ function createGarmentObject(template, position) {
     templateId: template.id,
     templateShape: template.shape,
     icon: template.icon,
+    source: template.asset,
     x: position?.x ?? 38,
     y: position?.y ?? 28,
     width: 25,
@@ -1211,7 +1212,7 @@ function objectMarkup(object, selected) {
   const state = `${selected ? 'is-selected' : ''} ${object.locked ? 'is-locked' : ''}`;
   let content = '';
   if (object.kind === 'garment') {
-    content = `<div class="workspace-garment template-shape--${escapeAttribute(object.templateShape)}"><i data-lucide="${escapeAttribute(object.icon ?? 'shirt')}"></i><span>${escapeHtml(object.name)}</span></div>`;
+    content = `<div class="workspace-garment template-shape--${escapeAttribute(object.templateShape)}">${object.source ? `<img src="${escapeAttribute(object.source)}" alt="" draggable="false" />` : `<i data-lucide="${escapeAttribute(object.icon ?? 'shirt')}"></i>`}<span>${escapeHtml(object.name)}</span></div>`;
   }
   if (object.kind === 'text') {
     content = `<p class="workspace-text-object" style="font-family:${escapeAttribute(object.fontFamily)};font-weight:${escapeAttribute(object.fontWeight)};font-size:${object.fontSize}px;letter-spacing:${object.letterSpacing}px;line-height:${object.lineHeight}">${escapeHtml(object.text)}</p>`;
