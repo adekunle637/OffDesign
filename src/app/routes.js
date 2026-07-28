@@ -1,7 +1,6 @@
 import { assetLibraryPage } from '../pages/asset-library.page.js';
 import { dashboardPage } from '../pages/dashboard.page.js';
 import { designsPage } from '../pages/designs.page.js';
-import { editorPlaceholderPage } from '../pages/editor-placeholder.page.js';
 import { libraryPlaceholderPage } from '../pages/library-placeholder.page.js';
 import { notFoundPage } from '../pages/not-found.page.js';
 import { templateLibraryPage } from '../pages/template-library.page.js';
@@ -118,8 +117,8 @@ export const routes = [
   },
   {
     path: '/editor',
-    title: 'Editor Foundation',
-    render: editorPlaceholderPage,
+    title: 'Design Clothes',
+    render: () => workspacePage('clothes'),
     nav: false,
   },
   {

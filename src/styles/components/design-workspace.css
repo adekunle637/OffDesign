@@ -188,6 +188,9 @@
   padding: clamp(4.4rem, 8vw, 6.5rem) clamp(1.25rem, 6vw, 7rem) clamp(2.5rem, 6vw, 5rem);
   place-items: center;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  touch-action: pan-x pan-y;
 }
 
 .workspace-artboard {
@@ -203,6 +206,7 @@
   box-shadow: 0 24px 60px rgb(27 36 56 / 16%);
   transform-origin: center;
   transition: transform 160ms ease, background 160ms ease;
+  touch-action: pan-x pan-y;
 }
 
 .workspace-artboard[data-background='transparent'] {
@@ -342,135 +346,56 @@
 
 .workspace-garment {
   position: relative;
-  display: grid;
-  width: 78%;
-  height: 86%;
-  place-items: center;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  border: 2px solid color-mix(in srgb, var(--object-colour) 72%, #171e2d);
-  border-radius: 24% 24% 16% 16%;
-  background: color-mix(in srgb, var(--object-colour) 42%, #fff);
-  box-shadow: inset 0 0 0 12px rgb(255 255 255 / 17%);
-  color: color-mix(in srgb, var(--object-colour) 70%, #171e2d);
+  isolation: isolate;
 }
 
-.workspace-garment::before,
-.workspace-garment::after {
+.workspace-garment__mockup {
   position: absolute;
-  top: 17%;
-  width: 32%;
-  height: 23%;
-  border: 2px solid color-mix(in srgb, var(--object-colour) 72%, #171e2d);
-  border-radius: 52% 45% 24% 24%;
-  background: color-mix(in srgb, var(--object-colour) 42%, #fff);
-  content: '';
-}
-
-.workspace-garment::before {
-  left: -22%;
-  transform: rotate(20deg);
-}
-
-.workspace-garment::after {
-  right: -22%;
-  transform: rotate(-20deg);
-}
-
-.workspace-garment svg {
-  width: 32%;
-  height: 32%;
-}
-
-.workspace-garment img {
-  position: relative;
-  z-index: 2;
-  width: 78%;
-  height: 78%;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   pointer-events: none;
   user-select: none;
 }
 
-.workspace-garment span {
+.workspace-garment__colour-wash {
   position: absolute;
-  bottom: 8%;
-  max-width: 88%;
+  z-index: 2;
+  inset: 13% 18% 17%;
+  border-radius: 25% 25% 16% 16%;
+  background: var(--object-colour);
+  mix-blend-mode: color;
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.workspace-garment__print {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: var(--print-width);
+  height: var(--print-height);
+  max-width: 55%;
+  place-items: center;
   overflow: hidden;
-  color: color-mix(in srgb, var(--object-colour) 80%, #101624);
-  font-size: clamp(0.38rem, 0.8vw, 0.64rem);
-  font-weight: 850;
+  color: var(--print-colour);
+  font-family: var(--font-sans);
+  font-size: clamp(0.36rem, 1vw, 0.72rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  line-height: 1;
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.template-shape--hoodie::after,
-.template-shape--jacket::after,
-.template-shape--blazer::after {
-  top: -7%;
-  right: 27%;
-  width: 45%;
-  height: 26%;
-  border-radius: 50% 50% 35% 35%;
-}
-
-.template-shape--trousers,
-.template-shape--cargo,
-.template-shape--joggers {
-  height: 94%;
-  border-radius: 11% 11% 17% 17%;
-}
-
-.template-shape--trousers::before,
-.template-shape--cargo::before,
-.template-shape--joggers::before,
-.template-shape--trousers::after,
-.template-shape--cargo::after,
-.template-shape--joggers::after {
-  top: 70%;
-  width: 35%;
-  height: 47%;
-  border-radius: 0 0 20% 20%;
-}
-
-.template-shape--trousers::before,
-.template-shape--cargo::before,
-.template-shape--joggers::before {
-  left: 10%;
-  transform: none;
-}
-
-.template-shape--trousers::after,
-.template-shape--cargo::after,
-.template-shape--joggers::after {
-  right: 10%;
-  transform: none;
-}
-
-.template-shape--dress,
-.template-shape--skirt,
-.template-shape--agbada,
-.template-shape--kaftan,
-.template-shape--senator,
-.template-shape--native {
-  border-radius: 27% 27% 8% 8%;
-  clip-path: polygon(22% 0, 78% 0, 84% 26%, 100% 100%, 0 100%, 16% 26%);
-}
-
-.template-shape--sneakers,
-.template-shape--slides {
-  width: 94%;
-  height: 43%;
-  margin-top: 30%;
-  border-radius: 42% 55% 18% 24%;
-}
-
-.template-shape--cap,
-.template-shape--bucket-hat {
-  width: 87%;
-  height: 52%;
-  margin-top: -16%;
-  border-radius: 70% 70% 18% 18%;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 28%);
+  transform: translate(calc(var(--print-x) - 50%), calc(var(--print-y) - 50%)) scale(calc(var(--print-scale) / 100));
+  transform-origin: center;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  user-select: none;
 }
 
 .workspace-text-object {
@@ -779,27 +704,11 @@
 }
 
 .workspace-template-card__preview img {
-  position: relative;
-  z-index: 2;
-  width: 78%;
-  height: 78%;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   pointer-events: none;
 }
-
-.workspace-template-card__preview::before,
-.workspace-template-card__preview::after {
-  position: absolute;
-  top: 34%;
-  width: 25%;
-  height: 18%;
-  border: 1px solid var(--template-accent);
-  border-radius: 55% 35% 20% 20%;
-  content: '';
-}
-
-.workspace-template-card__preview::before { left: 24%; transform: rotate(27deg); }
-.workspace-template-card__preview::after { right: 24%; transform: rotate(-27deg); }
 
 .workspace-template-card strong,
 .workspace-tool-card strong {
@@ -1042,6 +951,10 @@
   font-weight: 760;
 }
 
+.workspace-properties-grid .workspace-property--wide {
+  grid-column: span 2;
+}
+
 .workspace-properties-grid input,
 .workspace-properties-grid select {
   width: 100%;
@@ -1199,11 +1112,13 @@
     min-height: 26rem;
     padding: 4rem 1.35rem 2.8rem;
     place-items: center start;
+    scroll-snap-type: x proximity;
   }
 
   .workspace-artboard {
     width: max(34rem, 100%);
     min-height: 21.25rem;
+    scroll-snap-align: center;
   }
 
   .workspace-stage__controls {
@@ -1243,4 +1158,15 @@
   .workspace-properties-grid { grid-template-columns: repeat(2, 1fr); }
   .workspace-tool-grid { grid-template-columns: 1fr 1fr; }
   .workspace-template-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
+  .workspace-stage { min-height: 31rem; height: calc(100dvh - 12rem); }
+  .workspace-stage__viewport { padding-block: 4.25rem 2.5rem; }
+}
+
+@media (orientation: landscape) and (max-width: 760px) {
+  .workspace-stage { min-height: 22rem; height: calc(100dvh - 8rem); }
+  .workspace-stage__viewport { min-height: 22rem; }
+  .workspace-context-panel { max-height: 45dvh; overflow-y: auto; }
 }

@@ -1,42 +1,18 @@
 export const clothingTemplateCategories = [
-  { id: 'tops', label: 'Tops', icon: 'shirt' },
-  { id: 'bottoms', label: 'Bottoms', icon: 'panel-top' },
-  { id: 'dresses', label: 'Dresses', icon: 'sparkles' },
+  { id: 'essentials', label: 'Essentials', icon: 'shirt' },
   { id: 'outerwear', label: 'Outerwear', icon: 'shield' },
-  { id: 'footwear', label: 'Footwear', icon: 'footprints' },
-  { id: 'accessories', label: 'Accessories', icon: 'gem' },
-  { id: 'traditional', label: 'Traditional Wear', icon: 'landmark' },
+  { id: 'performance', label: 'Performance', icon: 'badge' },
+  { id: 'headwear', label: 'Headwear', icon: 'circle-dot' },
 ];
 
-// Templates are deliberately data-only. Adding a new starting point only requires
-// adding one record here; the workspace, library, previews, and drag behaviour
-// consume the same schema.
+// These production-style bases use local raster mockups, rather than remote or
+// vector placeholder artwork. The editor reads this same data for the library,
+// in-editor previews, editable print areas, and offline asset caching.
 export const clothingTemplates = [
-  { id: 'classic-t-shirt', category: 'tops', name: 'T-Shirt', icon: 'shirt', shape: 'tee', accent: '#7856f3', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'oversized-t-shirt', category: 'tops', name: 'Oversized T-Shirt', icon: 'shirt', shape: 'oversized', accent: '#ab7cf6', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'polo-shirt', category: 'tops', name: 'Polo Shirt', icon: 'shirt', shape: 'polo', accent: '#4d8cff', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'long-sleeve', category: 'tops', name: 'Long Sleeve', icon: 'shirt', shape: 'long-sleeve', accent: '#e07855', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'hoodie', category: 'tops', name: 'Hoodie', icon: 'shirt', shape: 'hoodie', accent: '#5b37d7', asset: '/templates/fluent/coat.svg' },
-  { id: 'sweatshirt', category: 'tops', name: 'Sweatshirt', icon: 'shirt', shape: 'sweatshirt', accent: '#658d6f', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'jersey', category: 'tops', name: 'Jersey', icon: 'shirt', shape: 'jersey', accent: '#2694aa', asset: '/templates/fluent/t-shirt.svg' },
-  { id: 'trousers', category: 'bottoms', name: 'Trousers', icon: 'panel-top', shape: 'trousers', accent: '#343b58', asset: '/templates/fluent/jeans.svg' },
-  { id: 'cargo-pants', category: 'bottoms', name: 'Cargo Pants', icon: 'panel-top', shape: 'cargo', accent: '#768153', asset: '/templates/fluent/jeans.svg' },
-  { id: 'joggers', category: 'bottoms', name: 'Joggers', icon: 'panel-top', shape: 'joggers', accent: '#74618f', asset: '/templates/fluent/jeans.svg' },
-  { id: 'shorts', category: 'bottoms', name: 'Shorts', icon: 'panel-top', shape: 'shorts', accent: '#e18d5a', asset: '/templates/fluent/jeans.svg' },
-  { id: 'dress', category: 'dresses', name: 'Dress', icon: 'sparkles', shape: 'dress', accent: '#d4719a', asset: '/templates/fluent/dress.svg' },
-  { id: 'skirt', category: 'dresses', name: 'Skirt', icon: 'sparkles', shape: 'skirt', accent: '#b25ba4', asset: '/templates/fluent/dress.svg' },
-  { id: 'jacket', category: 'outerwear', name: 'Jacket', icon: 'shield', shape: 'jacket', accent: '#4a669a', asset: '/templates/fluent/coat.svg' },
-  { id: 'blazer', category: 'outerwear', name: 'Blazer', icon: 'shield', shape: 'blazer', accent: '#263c6b', asset: '/templates/fluent/lab-coat.svg' },
-  { id: 'sneakers', category: 'footwear', name: 'Sneakers', icon: 'footprints', shape: 'sneakers', accent: '#e76c5b', asset: '/templates/fluent/running-shoe.svg' },
-  { id: 'slides', category: 'footwear', name: 'Slides', icon: 'footprints', shape: 'slides', accent: '#70a5b7', asset: '/templates/fluent/flat-shoe.svg' },
-  { id: 'face-cap', category: 'accessories', name: 'Face Cap', icon: 'gem', shape: 'cap', accent: '#d19a4b', asset: '/templates/fluent/billed-cap.svg' },
-  { id: 'bucket-hat', category: 'accessories', name: 'Bucket Hat', icon: 'gem', shape: 'bucket-hat', accent: '#b46a5c', asset: '/templates/fluent/womans-hat.svg' },
-  { id: 'bag', category: 'accessories', name: 'Bag', icon: 'gem', shape: 'bag', accent: '#9f7050', asset: '/templates/fluent/handbag.svg' },
-  { id: 'scarf', category: 'accessories', name: 'Scarf', icon: 'gem', shape: 'scarf', accent: '#d86e94', asset: '/templates/fluent/scarf.svg' },
-  { id: 'agbada', category: 'traditional', name: 'Agbada', icon: 'landmark', shape: 'agbada', accent: '#b6853e', asset: '/templates/fluent/kimono.svg' },
-  { id: 'kaftan', category: 'traditional', name: 'Kaftan', icon: 'landmark', shape: 'kaftan', accent: '#4b9985', asset: '/templates/fluent/kimono.svg' },
-  { id: 'senator', category: 'traditional', name: 'Senator', icon: 'landmark', shape: 'senator', accent: '#465c9b', asset: '/templates/fluent/kimono.svg' },
-  { id: 'native-wear', category: 'traditional', name: 'Native Wear', icon: 'landmark', shape: 'native', accent: '#9a5e4e', asset: '/templates/fluent/sari.svg' },
+  { id: 'studio-tee', category: 'essentials', name: 'Studio T-shirt', icon: 'shirt', shape: 'tee', accent: '#6f56d8', mockup: '/templates/mockups/tee-studio.png', material: 'Combed cotton', printZone: { x: 50, y: 51, width: 38, height: 18 } },
+  { id: 'night-hoodie', category: 'outerwear', name: 'Night Hoodie', icon: 'shirt', shape: 'hoodie', accent: '#4d5ec9', mockup: '/templates/mockups/hoodie-studio.png', material: 'Brushed fleece', printZone: { x: 50, y: 50, width: 34, height: 15 } },
+  { id: 'club-jersey', category: 'performance', name: 'Club Jersey', icon: 'badge', shape: 'jersey', accent: '#188da7', mockup: '/templates/mockups/jersey-studio.png', material: 'Breathable mesh', printZone: { x: 50, y: 52, width: 34, height: 17 } },
+  { id: 'field-cap', category: 'headwear', name: 'Field Cap', icon: 'circle-dot', shape: 'cap', accent: '#bd7c3e', mockup: '/templates/mockups/cap-studio.png', material: 'Structured twill', printZone: { x: 50, y: 48, width: 30, height: 14 } },
 ];
 
 export function templatesForCategory(categoryId) {

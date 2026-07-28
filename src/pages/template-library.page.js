@@ -8,9 +8,9 @@ export function templateLibraryPage() {
   const page = createElementFromHtml(`
     <section class="page template-library-page">
       <header class="page-header">
-        <p class="page-header__eyebrow">Local starting points</p>
+        <p class="page-header__eyebrow">Offline studio bases</p>
         <h1>Clothing templates</h1>
-        <p class="page-header__description">A modular, local-first wardrobe of editable placeholder templates. Choose a category, then send any starting point into the shared clothes workspace.</p>
+        <p class="page-header__description">A compact production-ready collection of textured apparel mockups. Every base is stored locally and keeps its editable colour, fabric, print, dimensions, and layer controls inside the clothes editor.</p>
       </header>
       <div class="template-library-page__categories">
         ${clothingTemplateCategories.map((category) => `
@@ -19,7 +19,7 @@ export function templateLibraryPage() {
             <div class="template-library-page__grid">
               ${templatesForCategory(category.id).map((template) => `
                 <a class="template-library-page__card" href="/design-clothes" data-route data-pending-template="${template.id}" style="--template-accent:${template.accent}">
-                  <span class="template-library-page__preview"><img src="${template.asset}" alt="" /></span><span><strong>${template.name}</strong><small>Open-source vector</small></span><i data-lucide="arrow-up-right"></i>
+                  <span class="template-library-page__preview"><img src="${template.mockup}" alt="${template.name} studio mockup" /></span><span><strong>${template.name}</strong><small>${template.material}</small></span><i data-lucide="arrow-up-right"></i>
                 </a>`).join('')}
             </div>
           </section>`).join('')}

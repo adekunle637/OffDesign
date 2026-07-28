@@ -6,17 +6,18 @@ import {
 } from '../../src/data/templates/clothing-templates.js';
 
 describe('clothing template library', () => {
-  it('keeps every template in a declared category with a bundled local asset', () => {
+  it('keeps every template in a declared category with a bundled local raster mockup', () => {
     const categoryIds = new Set(clothingTemplateCategories.map((category) => category.id));
 
     clothingTemplates.forEach((template) => {
       expect(categoryIds.has(template.category)).toBe(true);
-      expect(template.asset).toMatch(/^\/templates\/fluent\/.+\.svg$/);
+      expect(template.mockup).toMatch(/^\/templates\/mockups\/.+\.png$/);
+      expect(template.printZone).toMatchObject({ x: expect.any(Number), y: expect.any(Number) });
     });
   });
 
   it('exposes templates by category without editor-specific branching', () => {
-    expect(templatesForCategory('tops')).toHaveLength(7);
-    expect(templatesForCategory('traditional')).toHaveLength(4);
+    expect(templatesForCategory('essentials')).toHaveLength(1);
+    expect(templatesForCategory('headwear')).toHaveLength(1);
   });
 });

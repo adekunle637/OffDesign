@@ -997,13 +997,13 @@ class DesignWorkspace {
     const templates = templatesForCategory(this.state.templateCategory);
     return `
       <div class="workspace-template-categories">${clothingTemplateCategories.map((category) => `<button class="workspace-template-category ${category.id === this.state.templateCategory ? 'is-active' : ''}" type="button" data-template-category="${category.id}"><i data-lucide="${category.icon}"></i>${category.label}</button>`).join('')}</div>
-      <p class="workspace-panel-note">Drag a template directly onto the artboard, or tap to add it in the centre.</p>
-      <div class="workspace-template-grid">${templates.map((template) => `<button class="workspace-template-card" type="button" draggable="true" data-template-id="${template.id}" style="--template-accent:${template.accent}"><span class="workspace-template-card__preview template-shape--${template.shape}"><img src="${template.asset}" alt="" draggable="false" /></span><strong>${template.name}</strong><small>Open-source vector</small></button>`).join('')}</div>
+      <p class="workspace-panel-note">Locally bundled studio mockups with editable colour, fabric, print area, sizing, and layers. Drag onto the board or tap to place it centrally.</p>
+      <div class="workspace-template-grid">${templates.map((template) => `<button class="workspace-template-card" type="button" draggable="true" data-template-id="${template.id}" style="--template-accent:${template.accent}"><span class="workspace-template-card__preview"><img src="${template.mockup}" alt="${escapeAttribute(template.name)} studio mockup" draggable="false" /></span><strong>${template.name}</strong><small>${template.material}</small></button>`).join('')}</div>
     `;
   }
 
   fabricsMarkup() {
-    return `<p class="workspace-panel-note">Local material swatches are ready to apply. Select a garment first to colour its fabric; the library can grow by adding data records.</p><div class="workspace-fabric-list">${fabricCategories.map((category) => `<div class="workspace-fabric-row"><strong>${category.label}</strong><span>${category.swatches.map((colour) => `<button class="workspace-swatch" type="button" data-fabric-colour="${colour}" style="--swatch:${colour}" aria-label="Apply ${category.label} swatch ${colour}"></button>`).join('')}</span></div>`).join('')}</div>`;
+    return `<p class="workspace-panel-note">Material colour is applied non-destructively over the local mockup, preserving its fabric grain, seams, shadows, and folds. Select a garment, then choose a swatch.</p><div class="workspace-fabric-list">${fabricCategories.map((category) => `<div class="workspace-fabric-row"><strong>${category.label}</strong><span>${category.swatches.map((colour) => `<button class="workspace-swatch" type="button" data-fabric-colour="${colour}" style="--swatch:${colour}" aria-label="Apply ${category.label} swatch ${colour}"></button>`).join('')}</span></div>`).join('')}</div>`;
   }
 
   colourMarkup() {
@@ -1039,6 +1039,7 @@ class DesignWorkspace {
         <label>Rotate<input type="number" min="-360" max="360" value="${round(object.rotation)}" data-object-property="rotation" /></label>
         <label>Opacity<input type="number" min="0" max="100" value="${round(object.opacity)}" data-object-property="opacity" /></label>
         ${object.kind === 'text' ? `<label>Font<select data-font-family><option value="system-ui" ${object.fontFamily === 'system-ui' ? 'selected' : ''}>System Sans</option><option value="Georgia" ${object.fontFamily === 'Georgia' ? 'selected' : ''}>Georgia</option><option value="monospace" ${object.fontFamily === 'monospace' ? 'selected' : ''}>Mono</option></select></label><label>Weight<select data-font-weight><option value="500" ${object.fontWeight === '500' ? 'selected' : ''}>Regular</option><option value="700" ${object.fontWeight === '700' ? 'selected' : ''}>Bold</option><option value="900" ${object.fontWeight === '900' ? 'selected' : ''}>Black</option></select></label><label>Size<input type="number" min="8" max="240" value="${round(object.fontSize)}" data-object-property="fontSize" /></label><label>Tracking<input type="number" min="-10" max="30" value="${round(object.letterSpacing)}" data-object-property="letterSpacing" /></label>` : ''}
+        ${object.kind === 'garment' ? `<label class="workspace-property--wide">Print text<input type="text" maxlength="28" value="${escapeAttribute(object.printText ?? 'YOUR MARK')}" data-object-property="printText" /></label><label>Print colour<input type="color" value="${escapeAttribute(object.printColour ?? '#f7f2e8')}" data-object-property="printColour" /></label><label>Print scale<input type="number" min="40" max="170" value="${round(object.printScale ?? 100)}" data-object-property="printScale" /></label>` : ''}
       </div>`;
   }
 
@@ -1055,7 +1056,7 @@ function createDefaultState(definition) {
     projectName: definition.defaultProjectName,
     activeCategory: definition.categories[0].id,
     toolbarExpanded: false,
-    templateCategory: 'tops',
+    templateCategory: 'essentials',
     selectedIds: [],
     panMode: false,
     artboard: {
@@ -1102,7 +1103,9 @@ function createGarmentObject(template, position) {
     templateId: template.id,
     templateShape: template.shape,
     icon: template.icon,
-    source: template.asset,
+    source: template.mockup,
+    material: template.material,
+    printZone: template.printZone,
     x: position?.x ?? 38,
     y: position?.y ?? 28,
     width: 25,
@@ -1111,6 +1114,9 @@ function createGarmentObject(template, position) {
     opacity: 100,
     colour: template.accent,
     fabric: template.accent,
+    printText: 'YOUR MARK',
+    printColour: '#f7f2e8',
+    printScale: 100,
     locked: false,
     hidden: false,
     flipped: false,
@@ -1212,7 +1218,8 @@ function objectMarkup(object, selected) {
   const state = `${selected ? 'is-selected' : ''} ${object.locked ? 'is-locked' : ''}`;
   let content = '';
   if (object.kind === 'garment') {
-    content = `<div class="workspace-garment template-shape--${escapeAttribute(object.templateShape)}">${object.source ? `<img src="${escapeAttribute(object.source)}" alt="" draggable="false" />` : `<i data-lucide="${escapeAttribute(object.icon ?? 'shirt')}"></i>`}<span>${escapeHtml(object.name)}</span></div>`;
+    const printZone = object.printZone ?? { x: 50, y: 50, width: 34, height: 16 };
+    content = `<div class="workspace-garment workspace-garment--mockup"><img class="workspace-garment__mockup" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)} editable mockup" draggable="false" /><span class="workspace-garment__colour-wash" aria-hidden="true"></span><span class="workspace-garment__print" style="--print-x:${printZone.x}%;--print-y:${printZone.y}%;--print-width:${printZone.width}%;--print-height:${printZone.height}%;--print-colour:${escapeAttribute(object.printColour ?? '#f7f2e8')};--print-scale:${object.printScale ?? 100}%">${escapeHtml(object.printText ?? 'YOUR MARK')}</span></div>`;
   }
   if (object.kind === 'text') {
     content = `<p class="workspace-text-object" style="font-family:${escapeAttribute(object.fontFamily)};font-weight:${escapeAttribute(object.fontWeight)};font-size:${object.fontSize}px;letter-spacing:${object.letterSpacing}px;line-height:${object.lineHeight}">${escapeHtml(object.text)}</p>`;
