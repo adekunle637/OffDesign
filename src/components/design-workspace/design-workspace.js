@@ -1,4 +1,4 @@
-import { fabricCategories } from '../../data/fabrics/fabric-library.js';
+import { fabricCategories, fabricTextures } from '../../data/fabrics/fabric-library.js';
 import {
   getClothingTemplate,
   clothingTemplateCategories,
@@ -100,7 +100,9 @@ class DesignWorkspace {
     this.element.addEventListener('dragstart', (event) => this.handleDragStart(event), { signal });
     this.element.addEventListener('dragover', (event) => this.handleDragOver(event), { signal });
     this.element.addEventListener('drop', (event) => this.handleDrop(event), { signal });
-    this.element.addEventListener('pointerdown', (event) => this.handlePointerDown(event), { signal });
+    this.element.addEventListener('pointerdown', (event) => this.handlePointerDown(event), {
+      signal,
+    });
     window.addEventListener('pointermove', (event) => this.handlePointerMove(event), { signal });
     window.addEventListener('pointerup', () => this.finishPointerAction(), { signal });
     window.addEventListener('keydown', (event) => this.handleKeyboardShortcut(event), { signal });
@@ -114,6 +116,7 @@ class DesignWorkspace {
       }
       if (record?.workspace) {
         this.state = sanitizeState(record.workspace, this.definition);
+        this.openSelectionTools();
       }
       this.setSaveState('Saved locally');
       this.render();
@@ -170,7 +173,14 @@ class DesignWorkspace {
 
     const fabricColour = target.closest('[data-fabric-colour]')?.dataset.fabricColour;
     if (fabricColour) {
-      this.applyColour(fabricColour, 'fabric');
+      const swatch = target.closest('[data-fabric-colour]');
+      this.applyFabric(fabricColour, swatch?.dataset.fabricTexture);
+      return;
+    }
+
+    const texture = target.closest('[data-fabric-texture]')?.dataset.fabricTexture;
+    if (texture) {
+      this.applyTexture(texture);
       return;
     }
 
@@ -217,6 +227,12 @@ class DesignWorkspace {
       return;
     }
 
+    if (target.matches('[data-image-replace]') && target.files?.[0]) {
+      this.replaceSelectedImage(target.files[0]);
+      target.value = '';
+      return;
+    }
+
     if (target.matches('[data-background-colour]')) {
       this.setArtboardBackground('solid', target.value);
       return;
@@ -255,7 +271,8 @@ class DesignWorkspace {
   }
 
   handleDragStart(event) {
-    const target = event.target instanceof Element ? event.target.closest('[data-template-id]') : null;
+    const target =
+      event.target instanceof Element ? event.target.closest('[data-template-id]') : null;
     if (!target || !event.dataTransfer) {
       return;
     }
@@ -283,7 +300,9 @@ class DesignWorkspace {
       return;
     }
 
-    const [file] = [...(event.dataTransfer?.files ?? [])].filter((item) => item.type.startsWith('image/'));
+    const [file] = [...(event.dataTransfer?.files ?? [])].filter((item) =>
+      item.type.startsWith('image/'),
+    );
     if (file) {
       this.importImage(file, this.positionFromClient(event.clientX, event.clientY));
     }
@@ -292,6 +311,31 @@ class DesignWorkspace {
   handlePointerDown(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target || event.button > 0) {
+      return;
+    }
+
+    if (target.closest('[data-object-popover]')) {
+      return;
+    }
+
+    const resizeHandle = target.closest('[data-object-resize]');
+    if (resizeHandle) {
+      const objectElement = resizeHandle.closest('[data-object-id]');
+      const objectId = objectElement?.dataset.objectId;
+      const object = this.findObject(objectId);
+      if (!object || object.locked) {
+        return;
+      }
+      this.selectObject(object.id);
+      this.dragState = {
+        kind: 'resize',
+        objectId: object.id,
+        handle: resizeHandle.dataset.objectResize,
+        origin: { x: event.clientX, y: event.clientY },
+        object: { x: object.x, y: object.y, width: object.width, height: object.height },
+        committed: false,
+      };
+      event.preventDefault();
       return;
     }
 
@@ -343,7 +387,7 @@ class DesignWorkspace {
     }
 
     const artboard = this.element.querySelector('[data-workspace-artboard]');
-    if (!artboard || this.dragState.kind !== 'object') {
+    if (!artboard || !['object', 'resize'].includes(this.dragState.kind)) {
       return;
     }
 
@@ -355,6 +399,12 @@ class DesignWorkspace {
     const rect = artboard.getBoundingClientRect();
     const deltaX = ((event.clientX - this.dragState.origin.x) / rect.width) * 100;
     const deltaY = ((event.clientY - this.dragState.origin.y) / rect.height) * 100;
+    if (this.dragState.kind === 'resize') {
+      this.resizeObjectFromPointer(event, artboard);
+      this.renderObjects();
+      return;
+    }
+
     this.dragState.positions.forEach((position) => {
       const object = this.findObject(position.id);
       if (!object) {
@@ -367,7 +417,7 @@ class DesignWorkspace {
   }
 
   finishPointerAction() {
-    if (this.dragState?.kind === 'object' && this.dragState.committed) {
+    if (['object', 'resize'].includes(this.dragState?.kind) && this.dragState.committed) {
       this.markDirty();
     }
     this.dragState = null;
@@ -421,8 +471,10 @@ class DesignWorkspace {
       'add-text': () => this.addText(),
       'background-white': () => this.setArtboardBackground('white', '#ffffff'),
       'background-transparent': () => this.setArtboardBackground('transparent', 'transparent'),
-      'background-gradient-violet': () => this.setArtboardBackground('gradient', 'linear-gradient(135deg, #eeeaff, #c3dfff)'),
-      'background-gradient-warm': () => this.setArtboardBackground('gradient', 'linear-gradient(135deg, #fff1e7, #ffd4cb)'),
+      'background-gradient-violet': () =>
+        this.setArtboardBackground('gradient', 'linear-gradient(135deg, #eeeaff, #c3dfff)'),
+      'background-gradient-warm': () =>
+        this.setArtboardBackground('gradient', 'linear-gradient(135deg, #fff1e7, #ffd4cb)'),
       'duplicate-object': () => this.duplicateSelected(),
       'delete-object': () => this.deleteSelected(),
       'lock-object': () => this.toggleSelectedBoolean('locked'),
@@ -438,6 +490,8 @@ class DesignWorkspace {
         this.renderContextPanel();
         this.markDirty();
       },
+      'clear-garment-design': () => this.clearGarmentDesign(),
+      'place-on-garment': () => this.placeSelectedDesignOnGarment(),
     };
 
     actions[action]?.();
@@ -464,6 +518,7 @@ class DesignWorkspace {
     const object = createGarmentObject(template, position);
     this.state.objects.push(object);
     this.state.selectedIds = [object.id];
+    this.openSelectionTools();
     this.markDirty();
     this.render();
   }
@@ -476,11 +531,15 @@ class DesignWorkspace {
     }
 
     this.commit();
-    const textObjects = this.definition.id === 'logo'
-      ? [...value].filter((character) => character.trim()).map((character, index) => createTextObject(character, { x: 31 + index * 8, y: 42 }))
-      : [createTextObject(value)];
+    const textObjects =
+      this.definition.id === 'logo'
+        ? [...value]
+            .filter((character) => character.trim())
+            .map((character, index) => createTextObject(character, { x: 31 + index * 8, y: 42 }))
+        : [createTextObject(value)];
     this.state.objects.push(...textObjects);
     this.state.selectedIds = textObjects.map((object) => object.id);
+    this.openSelectionTools();
     this.markDirty();
     this.render();
   }
@@ -490,6 +549,7 @@ class DesignWorkspace {
     const object = createShapeObject(shape);
     this.state.objects.push(object);
     this.state.selectedIds = [object.id];
+    this.openSelectionTools();
     this.markDirty();
     this.render();
   }
@@ -499,6 +559,7 @@ class DesignWorkspace {
     const object = createDrawingObject(tool);
     this.state.objects.push(object);
     this.state.selectedIds = [object.id];
+    this.openSelectionTools();
     this.markDirty();
     this.render();
   }
@@ -514,9 +575,19 @@ class DesignWorkspace {
         return;
       }
       this.commit();
+      const garment = this.selectedObjects().find((object) => object.kind === 'garment');
+      if (garment) {
+        garment.printAsset = createGarmentArtworkFromImage(source, file.name);
+        this.state.selectedIds = [garment.id];
+        this.openSelectionTools();
+        this.markDirty();
+        this.render();
+        return;
+      }
       const object = createImageObject(source, file.name, position);
       this.state.objects.push(object);
       this.state.selectedIds = [object.id];
+      this.openSelectionTools();
       this.markDirty();
       this.render();
     } catch {
@@ -528,10 +599,17 @@ class DesignWorkspace {
     if (!this.findObject(objectId)) {
       return;
     }
-    this.state.selectedIds = additive
-      ? toggleId(this.state.selectedIds, objectId)
-      : [objectId];
+    this.state.selectedIds = additive ? toggleId(this.state.selectedIds, objectId) : [objectId];
+    this.openSelectionTools();
     this.renderSelection();
+  }
+
+  openSelectionTools() {
+    if (!this.state.selectedIds.length) {
+      return;
+    }
+    this.state.activeCategory = 'selection';
+    this.state.toolbarExpanded = true;
   }
 
   updateSelectedProperty(property, rawValue) {
@@ -539,7 +617,15 @@ class DesignWorkspace {
       return;
     }
     this.commit();
-    const numericProperties = new Set(['width', 'height', 'rotation', 'opacity', 'fontSize', 'letterSpacing', 'lineHeight']);
+    const numericProperties = new Set([
+      'width',
+      'height',
+      'rotation',
+      'opacity',
+      'fontSize',
+      'letterSpacing',
+      'lineHeight',
+    ]);
     const value = numericProperties.has(property) ? Number(rawValue) : rawValue;
     this.selectedObjects().forEach((object) => {
       object[property] = property === 'opacity' ? clamp(value, 0, 100) : value;
@@ -562,6 +648,37 @@ class DesignWorkspace {
     } else {
       this.setArtboardBackground('solid', colour);
     }
+  }
+
+  applyFabric(colour, texture) {
+    if (!this.state.selectedIds.length) {
+      this.setArtboardBackground('solid', colour);
+      return;
+    }
+    this.commit();
+    this.selectedObjects().forEach((object) => {
+      object.colour = colour;
+      object.fabric = colour;
+      if (texture) {
+        object.texture = texture;
+      }
+    });
+    this.markDirty();
+    this.render();
+  }
+
+  applyTexture(texture) {
+    const garments = this.selectedObjects().filter((object) => object.kind === 'garment');
+    if (!garments.length) {
+      this.setSaveState('Select a garment to change its texture');
+      return;
+    }
+    this.commit();
+    garments.forEach((object) => {
+      object.texture = texture;
+    });
+    this.markDirty();
+    this.render();
   }
 
   setArtboardBackground(kind, value) {
@@ -594,8 +711,93 @@ class DesignWorkspace {
       rotate: () => this.rotateSelected(15),
       crop: () => this.updateSelectedProperty('crop', 'center'),
       mirror: () => this.toggleSelectedBoolean('flipped'),
+      'open-colour': () => this.openCategory('colour'),
+      'open-fabrics': () => this.openCategory('fabrics'),
+      'open-measurements': () => this.openCategory('measurements'),
+      'open-layers': () => this.openCategory('layers'),
+      'open-properties': () => this.openCategory('properties'),
+      'toggle-text-outline': () => this.toggleSelectedBoolean('outline'),
+      'toggle-text-shadow': () => this.toggleSelectedBoolean('shadow'),
+      'toggle-text-gradient': () => this.toggleSelectedBoolean('gradient'),
     };
     actions[action]?.();
+  }
+
+  resizeObjectFromPointer(event, artboard) {
+    const state = this.dragState;
+    const object = this.findObject(state.objectId);
+    if (!object) {
+      return;
+    }
+    const rect = artboard.getBoundingClientRect();
+    const deltaX = this.snapValue(((event.clientX - state.origin.x) / rect.width) * 100);
+    const deltaY = this.snapValue(((event.clientY - state.origin.y) / rect.height) * 100);
+    const right = state.object.x + state.object.width;
+    const bottom = state.object.y + state.object.height;
+
+    if (state.handle === 'se') {
+      object.width = clamp(state.object.width + deltaX, 2, 100 - state.object.x);
+      object.height = clamp(state.object.height + deltaY, 2, 100 - state.object.y);
+      return;
+    }
+
+    object.width = clamp(state.object.width - deltaX, 2, right);
+    object.height = clamp(state.object.height - deltaY, 2, bottom);
+    object.x = right - object.width;
+    object.y = bottom - object.height;
+  }
+
+  async replaceSelectedImage(file) {
+    const image = this.selectedObjects().find((object) => object.kind === 'image');
+    if (!image || !file.type.startsWith('image/')) {
+      return;
+    }
+    try {
+      const source = await readFileAsDataUrl(file);
+      if (!this.element.isConnected) {
+        return;
+      }
+      this.commit();
+      image.source = source;
+      image.name = file.name || 'Imported image';
+      this.markDirty();
+      this.render();
+    } catch {
+      this.setSaveState('Image could not be replaced');
+    }
+  }
+
+  placeSelectedDesignOnGarment() {
+    const garment = this.selectedObjects().find((object) => object.kind === 'garment');
+    const design = this.selectedObjects().find((object) => object.kind !== 'garment');
+    if (!garment || !design) {
+      this.setSaveState('Select a garment and a design to place it');
+      return;
+    }
+    const artwork = createGarmentArtwork(design);
+    if (!artwork) {
+      this.setSaveState('This object cannot be placed on a garment yet');
+      return;
+    }
+    this.commit();
+    garment.printAsset = artwork;
+    this.state.objects = this.state.objects.filter((object) => object.id !== design.id);
+    this.state.selectedIds = [garment.id];
+    this.markDirty();
+    this.render();
+  }
+
+  clearGarmentDesign() {
+    const garments = this.selectedObjects().filter((object) => object.kind === 'garment');
+    if (!garments.length || !garments.some((object) => object.printAsset)) {
+      return;
+    }
+    this.commit();
+    garments.forEach((object) => {
+      delete object.printAsset;
+    });
+    this.markDirty();
+    this.render();
   }
 
   toggleSelectedBoolean(property) {
@@ -638,6 +840,7 @@ class DesignWorkspace {
     }));
     this.state.objects.push(...copies);
     this.state.selectedIds = copies.map((object) => object.id);
+    this.openSelectionTools();
     this.markDirty();
     this.render();
   }
@@ -749,13 +952,15 @@ class DesignWorkspace {
     this.setSaveState('Saving locally…');
     this.saveQueue = this.saveQueue
       .catch(() => undefined)
-      .then(() => saveDesignMetadata({
-        id: this.projectId,
-        name: workspace.projectName,
-        editor: this.definition.id,
-        status: 'local',
-        workspace,
-      }))
+      .then(() =>
+        saveDesignMetadata({
+          id: this.projectId,
+          name: workspace.projectName,
+          editor: this.definition.id,
+          status: 'local',
+          workspace,
+        }),
+      )
       .then(() => {
         if (this.element.isConnected) {
           this.setSaveState('Saved locally');
@@ -770,13 +975,17 @@ class DesignWorkspace {
   }
 
   exportProject() {
-    const contents = JSON.stringify({
-      format: 'offdesign-workspace',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      editor: this.definition.id,
-      project: this.snapshot(),
-    }, null, 2);
+    const contents = JSON.stringify(
+      {
+        format: 'offdesign-workspace',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        editor: this.definition.id,
+        project: this.snapshot(),
+      },
+      null,
+      2,
+    );
     const blob = new Blob([contents], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -819,7 +1028,8 @@ class DesignWorkspace {
     }
     const shellStatus = document.querySelector('[data-save-status]');
     if (shellStatus) {
-      shellStatus.textContent = message === 'Saved locally' ? 'Saved locally — offline ready' : message;
+      shellStatus.textContent =
+        message === 'Saved locally' ? 'Saved locally — offline ready' : message;
     }
     hydrateIcons(this.element);
   }
@@ -869,7 +1079,9 @@ class DesignWorkspace {
     if (!objects || !empty) {
       return;
     }
-    objects.innerHTML = this.state.objects.map((object) => objectMarkup(object, this.state.selectedIds.includes(object.id))).join('');
+    objects.innerHTML = this.state.objects
+      .map((object) => objectMarkup(object, this.state.selectedIds.includes(object.id)))
+      .join('');
     empty.hidden = this.state.objects.length > 0;
     hydrateIcons(this.element);
   }
@@ -885,9 +1097,13 @@ class DesignWorkspace {
     if (readout) {
       readout.textContent = `${Math.round(this.state.artboard.zoom * 100)}%`;
     }
-    this.element.querySelector('[data-workspace-action="toggle-pan"]')?.toggleAttribute('aria-pressed', this.state.panMode);
+    this.element
+      .querySelector('[data-workspace-action="toggle-pan"]')
+      ?.toggleAttribute('aria-pressed', this.state.panMode);
     ['grid', 'rulers', 'guides'].forEach((option) => {
-      this.element.querySelector(`[data-workspace-action="toggle-${option}"]`)?.toggleAttribute('aria-pressed', this.state.artboard[option]);
+      this.element
+        .querySelector(`[data-workspace-action="toggle-${option}"]`)
+        ?.toggleAttribute('aria-pressed', this.state.artboard[option]);
     });
   }
 
@@ -899,16 +1115,23 @@ class DesignWorkspace {
       return;
     }
     toolbar.dataset.expanded = String(this.state.toolbarExpanded);
-    toggle.setAttribute('aria-label', this.state.toolbarExpanded ? 'Collapse editing toolbar' : 'Expand editing toolbar');
+    toggle.setAttribute(
+      'aria-label',
+      this.state.toolbarExpanded ? 'Collapse editing toolbar' : 'Expand editing toolbar',
+    );
     toggle.innerHTML = `<i data-lucide="${this.state.toolbarExpanded ? 'chevron-down' : 'chevron-up'}"></i>`;
     const categories = this.toolbarCategories();
-    container.innerHTML = categories.map((category) => `
+    container.innerHTML = categories
+      .map(
+        (category) => `
       <button class="workspace-category ${this.state.activeCategory === category.id ? 'is-active' : ''}" type="button" data-workspace-category="${category.id}" aria-pressed="${this.state.activeCategory === category.id}">
         <i data-lucide="${category.icon}"></i>
         <span class="workspace-category__label">${category.label}</span>
         <span class="workspace-category__tools">${(category.tools ?? []).slice(0, 3).join(' · ')}</span>
       </button>
-    `).join('');
+    `,
+      )
+      .join('');
     hydrateIcons(this.element);
   }
 
@@ -919,7 +1142,12 @@ class DesignWorkspace {
     }
     const kind = selected[0].kind;
     return [
-      { id: 'selection', label: selected.length > 1 ? `${selected.length} selected` : selected[0].name, icon: 'mouse-pointer-2', tools: objectToolSets[kind] ?? objectToolSets.shape },
+      {
+        id: 'selection',
+        label: selected.length > 1 ? `${selected.length} selected` : selected[0].name,
+        icon: 'mouse-pointer-2',
+        tools: objectToolSets[kind] ?? objectToolSets.shape,
+      },
       ...this.definition.categories,
     ];
   }
@@ -935,7 +1163,8 @@ class DesignWorkspace {
     }
     const selected = this.selectedObjects();
     const category = this.state.activeCategory;
-    const categoryLabel = this.toolbarCategories().find((item) => item.id === category)?.label ?? 'Tools';
+    const categoryLabel =
+      this.toolbarCategories().find((item) => item.id === category)?.label ?? 'Tools';
     panel.innerHTML = `
       <div class="workspace-context-panel__header">
         <div><p class="eyebrow">${selected.length ? 'Object-aware editing' : this.definition.title}</p><h2>${escapeHtml(categoryLabel)}</h2></div>
@@ -972,7 +1201,12 @@ class DesignWorkspace {
         ${selected[0]?.kind === 'text' ? this.selectionToolsMarkup(selected) : `<p class="workspace-panel-note">${this.definition.id === 'logo' ? 'Logo text is placed as independent editable characters.' : 'Add text, then select it for typography, spacing, gradient, outline, shadow, and opacity controls.'}</p>`}`;
     }
     if (category === 'draw' || category === 'brush' || category === 'pen') {
-      const tools = category === 'draw' ? ['Pencil', 'Eraser'] : category === 'brush' ? ['Brush', 'Marker'] : ['Pen', 'Bezier'];
+      const tools =
+        category === 'draw'
+          ? ['Pencil', 'Eraser']
+          : category === 'brush'
+            ? ['Brush', 'Marker']
+            : ['Pen', 'Bezier'];
       return `<div class="workspace-tool-grid">${tools.map((tool) => `<button class="workspace-tool-card" type="button" data-add-drawing="${tool.toLowerCase()}"><i data-lucide="${category === 'brush' ? 'paintbrush' : category === 'pen' ? 'pen-tool' : 'pencil'}"></i><strong>${tool}</strong><span>Add a movable ${tool.toLowerCase()} placeholder.</span></button>`).join('')}</div>`;
     }
     if (category === 'shapes') {
@@ -1003,7 +1237,12 @@ class DesignWorkspace {
   }
 
   fabricsMarkup() {
-    return `<p class="workspace-panel-note">Material colour is applied non-destructively over the local mockup, preserving its fabric grain, seams, shadows, and folds. Select a garment, then choose a swatch.</p><div class="workspace-fabric-list">${fabricCategories.map((category) => `<div class="workspace-fabric-row"><strong>${category.label}</strong><span>${category.swatches.map((colour) => `<button class="workspace-swatch" type="button" data-fabric-colour="${colour}" style="--swatch:${colour}" aria-label="Apply ${category.label} swatch ${colour}"></button>`).join('')}</span></div>`).join('')}</div>`;
+    const selectedGarment = this.selectedObjects().find((object) => object.kind === 'garment');
+    return `
+      <p class="workspace-panel-note">Choose a colour or texture for the selected garment. Colour changes preserve the garment's seams, folds, and shadows.</p>
+      <div class="workspace-fabric-list">${fabricCategories.map((category) => `<div class="workspace-fabric-row"><strong>${category.label}</strong><span>${category.swatches.map((colour) => `<button class="workspace-swatch" type="button" data-fabric-colour="${colour}" data-fabric-texture="${category.texture}" style="--swatch:${colour}" aria-label="Apply ${category.label} swatch ${colour}"></button>`).join('')}</span></div>`).join('')}</div>
+      <div class="workspace-texture-heading"><p class="workspace-mini-heading">Surface texture</p><span>${selectedGarment ? `Current: ${escapeHtml(capitalize(selectedGarment.texture ?? 'plain'))}` : 'Select a garment'}</span></div>
+      <div class="workspace-texture-grid">${fabricTextures.map((texture) => `<button class="workspace-texture-card ${selectedGarment?.texture === texture.id ? 'is-active' : ''}" type="button" data-fabric-texture="${texture.id}" data-texture-preview="${texture.id}" aria-pressed="${selectedGarment?.texture === texture.id}"><span class="workspace-texture-card__preview"></span><strong>${texture.label}</strong><small>${texture.description}</small></button>`).join('')}</div>`;
   }
 
   colourMarkup() {
@@ -1021,9 +1260,13 @@ class DesignWorkspace {
       return '<p class="workspace-panel-note">Select an object on the artboard to see its editing controls.</p>';
     }
     const tools = objectToolSets[object.kind] ?? objectToolSets.shape;
+    const canPlaceOnGarment =
+      selected.some((item) => item.kind === 'garment') &&
+      selected.some((item) => item.kind !== 'garment');
     return `
       <div class="workspace-selection-summary"><span class="workspace-object-dot workspace-object-dot--${object.kind}"></span><div><strong>${escapeHtml(object.name)}</strong><small>${escapeHtml(object.kind)}${selected.length > 1 ? ` · ${selected.length} objects` : ''}</small></div></div>
       ${this.propertyMarkup(object)}
+      ${canPlaceOnGarment ? '<div class="workspace-placement-callout"><i data-lucide="stamp"></i><span>Ready to place this design on the selected garment.</span><button type="button" data-workspace-action="place-on-garment">Place on garment</button></div>' : ''}
       <div class="workspace-object-tools">${tools.map((tool) => `<button type="button" class="workspace-object-tool" data-object-action="${objectActionFromLabel(tool)}">${tool}</button>`).join('')}</div>
     `;
   }
@@ -1039,7 +1282,8 @@ class DesignWorkspace {
         <label>Rotate<input type="number" min="-360" max="360" value="${round(object.rotation)}" data-object-property="rotation" /></label>
         <label>Opacity<input type="number" min="0" max="100" value="${round(object.opacity)}" data-object-property="opacity" /></label>
         ${object.kind === 'text' ? `<label>Font<select data-font-family><option value="system-ui" ${object.fontFamily === 'system-ui' ? 'selected' : ''}>System Sans</option><option value="Georgia" ${object.fontFamily === 'Georgia' ? 'selected' : ''}>Georgia</option><option value="monospace" ${object.fontFamily === 'monospace' ? 'selected' : ''}>Mono</option></select></label><label>Weight<select data-font-weight><option value="500" ${object.fontWeight === '500' ? 'selected' : ''}>Regular</option><option value="700" ${object.fontWeight === '700' ? 'selected' : ''}>Bold</option><option value="900" ${object.fontWeight === '900' ? 'selected' : ''}>Black</option></select></label><label>Size<input type="number" min="8" max="240" value="${round(object.fontSize)}" data-object-property="fontSize" /></label><label>Tracking<input type="number" min="-10" max="30" value="${round(object.letterSpacing)}" data-object-property="letterSpacing" /></label>` : ''}
-        ${object.kind === 'garment' ? `<label class="workspace-property--wide">Print text<input type="text" maxlength="28" value="${escapeAttribute(object.printText ?? 'YOUR MARK')}" data-object-property="printText" /></label><label>Print colour<input type="color" value="${escapeAttribute(object.printColour ?? '#f7f2e8')}" data-object-property="printColour" /></label><label>Print scale<input type="number" min="40" max="170" value="${round(object.printScale ?? 100)}" data-object-property="printScale" /></label>` : ''}
+        ${object.kind === 'image' ? `<label class="workspace-property--wide workspace-image-replace">Replace image<input class="visually-hidden" type="file" accept="image/*" data-image-replace /><span><i data-lucide="refresh-cw"></i> Choose another image</span></label>` : ''}
+        ${object.kind === 'garment' ? `<label class="workspace-property--wide">Print text<input type="text" maxlength="28" value="${escapeAttribute(object.printText ?? 'YOUR MARK')}" data-object-property="printText" /></label><label>Print colour<input type="color" value="${escapeAttribute(object.printColour ?? '#f7f2e8')}" data-object-property="printColour" /></label><label>Print scale<input type="number" min="40" max="170" value="${round(object.printScale ?? 100)}" data-object-property="printScale" /></label><div class="workspace-garment-design-control"><span>${object.printAsset ? `Placed design: ${escapeHtml(object.printAsset.name)}` : 'No uploaded design yet'}</span><label class="workspace-inline-upload"><input class="visually-hidden" type="file" accept="image/*" data-image-input /><i data-lucide="image-up"></i> Upload design</label>${object.printAsset ? '<button type="button" data-workspace-action="clear-garment-design">Remove design</button>' : ''}</div>` : ''}
       </div>`;
   }
 
@@ -1047,7 +1291,13 @@ class DesignWorkspace {
     if (!this.state.objects.length) {
       return '<p class="workspace-panel-note">Your layers appear here in stacking order. Add a template, shape, image, drawing, or text object to begin.</p>';
     }
-    return `<div class="workspace-layer-list">${[...this.state.objects].reverse().map((object) => `<div class="workspace-layer ${this.state.selectedIds.includes(object.id) ? 'is-selected' : ''}"><button type="button" class="workspace-layer__main" data-layer-action="select" data-object-id="${object.id}"><span class="workspace-object-dot workspace-object-dot--${object.kind}"></span><span><strong>${escapeHtml(object.name)}</strong><small>${escapeHtml(object.kind)}</small></span></button><div class="workspace-layer__actions"><button type="button" data-layer-action="hide" data-object-id="${object.id}" aria-label="${object.hidden ? 'Show' : 'Hide'} ${escapeAttribute(object.name)}"><i data-lucide="${object.hidden ? 'eye-off' : 'eye'}"></i></button><button type="button" data-layer-action="lock" data-object-id="${object.id}" aria-label="${object.locked ? 'Unlock' : 'Lock'} ${escapeAttribute(object.name)}"><i data-lucide="${object.locked ? 'lock' : 'unlock'}"></i></button><button type="button" data-layer-action="up" data-object-id="${object.id}" aria-label="Move ${escapeAttribute(object.name)} forward"><i data-lucide="chevron-up"></i></button><button type="button" data-layer-action="down" data-object-id="${object.id}" aria-label="Move ${escapeAttribute(object.name)} backward"><i data-lucide="chevron-down"></i></button></div></div>`).join('')}</div>`;
+    return `<div class="workspace-layer-list">${[...this.state.objects]
+      .reverse()
+      .map(
+        (object) =>
+          `<div class="workspace-layer ${this.state.selectedIds.includes(object.id) ? 'is-selected' : ''}"><button type="button" class="workspace-layer__main" data-layer-action="select" data-object-id="${object.id}"><span class="workspace-object-dot workspace-object-dot--${object.kind}"></span><span><strong>${escapeHtml(object.name)}</strong><small>${escapeHtml(object.kind)}</small></span></button><div class="workspace-layer__actions"><button type="button" data-layer-action="hide" data-object-id="${object.id}" aria-label="${object.hidden ? 'Show' : 'Hide'} ${escapeAttribute(object.name)}"><i data-lucide="${object.hidden ? 'eye-off' : 'eye'}"></i></button><button type="button" data-layer-action="lock" data-object-id="${object.id}" aria-label="${object.locked ? 'Unlock' : 'Lock'} ${escapeAttribute(object.name)}"><i data-lucide="${object.locked ? 'lock' : 'unlock'}"></i></button><button type="button" data-layer-action="up" data-object-id="${object.id}" aria-label="Move ${escapeAttribute(object.name)} forward"><i data-lucide="chevron-up"></i></button><button type="button" data-layer-action="down" data-object-id="${object.id}" aria-label="Move ${escapeAttribute(object.name)} backward"><i data-lucide="chevron-down"></i></button></div></div>`,
+      )
+      .join('')}</div>`;
   }
 }
 
@@ -1084,7 +1334,9 @@ function sanitizeState(value, definition) {
     ...fallback,
     ...value,
     projectName: typeof value.projectName === 'string' ? value.projectName : fallback.projectName,
-    activeCategory: validCategories.has(value.activeCategory) ? value.activeCategory : fallback.activeCategory,
+    activeCategory: validCategories.has(value.activeCategory)
+      ? value.activeCategory
+      : fallback.activeCategory,
     selectedIds: Array.isArray(value.selectedIds) ? value.selectedIds : [],
     objects: Array.isArray(value.objects) ? value.objects.filter(isWorkspaceObject) : [],
     artboard: { ...fallback.artboard, ...(value.artboard ?? {}) },
@@ -1092,7 +1344,12 @@ function sanitizeState(value, definition) {
 }
 
 function isWorkspaceObject(object) {
-  return object && typeof object.id === 'string' && typeof object.kind === 'string' && typeof object.x === 'number';
+  return (
+    object &&
+    typeof object.id === 'string' &&
+    typeof object.kind === 'string' &&
+    typeof object.x === 'number'
+  );
 }
 
 function createGarmentObject(template, position) {
@@ -1114,6 +1371,7 @@ function createGarmentObject(template, position) {
     opacity: 100,
     colour: template.accent,
     fabric: template.accent,
+    texture: 'plain',
     printText: 'YOUR MARK',
     printColour: '#f7f2e8',
     printScale: 100,
@@ -1141,6 +1399,9 @@ function createTextObject(text, position = {}) {
     fontSize: 34,
     letterSpacing: 0,
     lineHeight: 1.1,
+    outline: false,
+    shadow: false,
+    gradient: false,
     locked: false,
     hidden: false,
     flipped: false,
@@ -1211,6 +1472,7 @@ function objectMarkup(object, selected) {
     `width:${object.width}%`,
     `height:${object.height}%`,
     `--object-colour:${object.colour ?? '#7856f3'}`,
+    `--quick-actions-flip:${object.flipped ? -1 : 1}`,
     `opacity:${(object.opacity ?? 100) / 100}`,
     `transform:rotate(${object.rotation ?? 0}deg) ${object.flipped ? 'scaleX(-1)' : ''}`,
     object.hidden ? 'display:none' : '',
@@ -1219,13 +1481,30 @@ function objectMarkup(object, selected) {
   let content = '';
   if (object.kind === 'garment') {
     const printZone = object.printZone ?? { x: 50, y: 50, width: 34, height: 16 };
-    content = `<div class="workspace-garment workspace-garment--mockup"><img class="workspace-garment__mockup" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)} editable mockup" draggable="false" /><span class="workspace-garment__colour-wash" aria-hidden="true"></span><span class="workspace-garment__print" style="--print-x:${printZone.x}%;--print-y:${printZone.y}%;--print-width:${printZone.width}%;--print-height:${printZone.height}%;--print-colour:${escapeAttribute(object.printColour ?? '#f7f2e8')};--print-scale:${object.printScale ?? 100}%">${escapeHtml(object.printText ?? 'YOUR MARK')}</span></div>`;
+    const printContent = garmentArtworkMarkup(object.printAsset, object);
+    content = `<div class="workspace-garment workspace-garment--mockup" data-texture="${escapeAttribute(object.texture ?? 'plain')}"><img class="workspace-garment__mockup" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)} editable mockup" draggable="false" /><span class="workspace-garment__colour-wash" aria-hidden="true"></span><span class="workspace-garment__texture" aria-hidden="true"></span><span class="workspace-garment__print" style="--print-x:${printZone.x}%;--print-y:${printZone.y}%;--print-width:${printZone.width}%;--print-height:${printZone.height}%;--print-colour:${escapeAttribute(object.printColour ?? '#f7f2e8')};--print-scale:${object.printScale ?? 100}%">${printContent}</span></div>`;
   }
   if (object.kind === 'text') {
-    content = `<p class="workspace-text-object" style="font-family:${escapeAttribute(object.fontFamily)};font-weight:${escapeAttribute(object.fontWeight)};font-size:${object.fontSize}px;letter-spacing:${object.letterSpacing}px;line-height:${object.lineHeight}">${escapeHtml(object.text)}</p>`;
+    const textStyles = [
+      `font-family:${escapeAttribute(object.fontFamily)}`,
+      `font-weight:${escapeAttribute(object.fontWeight)}`,
+      `font-size:${object.fontSize}px`,
+      `letter-spacing:${object.letterSpacing}px`,
+      `line-height:${object.lineHeight}`,
+      object.outline
+        ? '-webkit-text-stroke:1px color-mix(in srgb, var(--object-colour) 70%, #111827)'
+        : '',
+      object.shadow ? 'text-shadow:0 3px 8px rgb(15 23 42 / 35%)' : '',
+      object.gradient
+        ? 'background:linear-gradient(135deg, var(--object-colour), #f66e9e);-webkit-background-clip:text;background-clip:text;color:transparent'
+        : '',
+    ]
+      .filter(Boolean)
+      .join(';');
+    content = `<p class="workspace-text-object" style="${textStyles}">${escapeHtml(object.text)}</p>`;
   }
   if (object.kind === 'image') {
-    content = `<img class="workspace-image-object" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)}" draggable="false" />`;
+    content = `<span class="workspace-image-wrap"><img class="workspace-image-object" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)}" draggable="false" /><span class="workspace-image-object__colour-wash" aria-hidden="true"></span></span>`;
   }
   if (object.kind === 'shape') {
     content = `<span class="workspace-shape workspace-shape--${escapeAttribute(object.shape)}"></span>`;
@@ -1233,7 +1512,10 @@ function objectMarkup(object, selected) {
   if (object.kind === 'drawing') {
     content = `<svg class="workspace-drawing" viewBox="0 0 100 40" aria-hidden="true"><path d="M4 30 C 22 1, 33 38, 53 18 S 75 1, 96 24" fill="none" stroke="currentColor" stroke-linecap="round" /></svg>`;
   }
-  return `<div class="workspace-object workspace-object--${escapeAttribute(object.kind)} ${state}" data-object-id="${object.id}" style="${style}" tabindex="0" role="button" aria-label="${escapeAttribute(object.name)}${object.locked ? ', locked' : ''}">${content}${selected ? '<span class="workspace-object__handle workspace-object__handle--nw"></span><span class="workspace-object__handle workspace-object__handle--se"></span>' : ''}</div>`;
+  const selectedControls = selected
+    ? `<span class="workspace-object__handle workspace-object__handle--nw" data-object-resize="nw" aria-hidden="true"></span><span class="workspace-object__handle workspace-object__handle--se" data-object-resize="se" aria-hidden="true"></span><span class="workspace-object__quick-actions" data-object-popover aria-label="${escapeAttribute(object.name)} quick actions"><button type="button" data-object-action="duplicate" aria-label="Duplicate ${escapeAttribute(object.name)}" title="Duplicate"><i data-lucide="copy"></i></button><button class="workspace-object__delete" type="button" data-object-action="delete" aria-label="Delete ${escapeAttribute(object.name)}" title="Delete"><i data-lucide="trash-2"></i></button></span>`
+    : '';
+  return `<div class="workspace-object workspace-object--${escapeAttribute(object.kind)} ${state}" data-object-id="${object.id}" style="${style}" tabindex="0" role="button" aria-label="${escapeAttribute(object.name)}${object.locked ? ', locked' : ''}">${content}${selectedControls}</div>`;
 }
 
 function objectQuickActions(actions) {
@@ -1242,9 +1524,60 @@ function objectQuickActions(actions) {
 
 function objectActionFromLabel(label) {
   const lookup = {
-    Duplicate: 'duplicate', Delete: 'delete', Lock: 'lock', Flip: 'flip', Mirror: 'mirror', Rotate: 'rotate', Crop: 'crop',
+    Duplicate: 'duplicate',
+    Delete: 'delete',
+    Lock: 'lock',
+    Flip: 'flip',
+    Mirror: 'mirror',
+    Rotate: 'rotate',
+    Crop: 'crop',
+    Colour: 'open-colour',
+    Fill: 'open-colour',
+    Stroke: 'open-colour',
+    Fabric: 'open-fabrics',
+    Texture: 'open-fabrics',
+    Pattern: 'open-fabrics',
+    Measurements: 'open-measurements',
+    Layer: 'open-layers',
+    Properties: 'open-properties',
+    Font: 'open-properties',
+    'Font Size': 'open-properties',
+    'Font Weight': 'open-properties',
+    'Letter Spacing': 'open-properties',
+    'Line Height': 'open-properties',
+    Alignment: 'open-properties',
+    Resize: 'open-properties',
+    Opacity: 'open-properties',
+    Replace: 'open-properties',
+    Outline: 'toggle-text-outline',
+    Shadow: 'toggle-text-shadow',
+    Gradient: 'toggle-text-gradient',
   };
   return lookup[label] ?? 'noop';
+}
+
+function createGarmentArtworkFromImage(source, name) {
+  return { kind: 'image', source, name: name || 'Uploaded design' };
+}
+
+function createGarmentArtwork(object) {
+  if (object.kind === 'image') {
+    return createGarmentArtworkFromImage(object.source, object.name);
+  }
+  if (object.kind === 'text') {
+    return { kind: 'text', text: object.text, name: object.name, colour: object.colour };
+  }
+  return null;
+}
+
+function garmentArtworkMarkup(artwork, garment) {
+  if (artwork?.kind === 'image') {
+    return `<img class="workspace-garment__print-image" src="${escapeAttribute(artwork.source)}" alt="${escapeAttribute(artwork.name)} placed on ${escapeAttribute(garment.name)}" draggable="false" />`;
+  }
+  if (artwork?.kind === 'text') {
+    return `<span class="workspace-garment__print-text" style="--placed-design-colour:${escapeAttribute(artwork.colour ?? garment.printColour ?? '#f7f2e8')}">${escapeHtml(artwork.text)}</span>`;
+  }
+  return escapeHtml(garment.printText ?? 'YOUR MARK');
 }
 
 function colourInputValue(selected, state) {
@@ -1291,11 +1624,21 @@ function createId() {
 }
 
 function fileSafeName(value) {
-  return (value || 'offdesign-project').replaceAll(/[^a-z0-9-_]+/gi, '-').replaceAll(/^-|-$/g, '').toLowerCase() || 'offdesign-project';
+  return (
+    (value || 'offdesign-project')
+      .replaceAll(/[^a-z0-9-_]+/gi, '-')
+      .replaceAll(/^-|-$/g, '')
+      .toLowerCase() || 'offdesign-project'
+  );
 }
 
 function escapeHtml(value) {
-  return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function escapeAttribute(value) {
@@ -1303,5 +1646,9 @@ function escapeAttribute(value) {
 }
 
 function isTypingInField(target) {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
 }

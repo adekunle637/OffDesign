@@ -3,8 +3,9 @@
 OffDesign is an offline-first Progressive Web App for designing clothing after
 the initial installation.
 
-This repository currently contains the production foundation only. The clothing
-editor is intentionally not implemented yet.
+This repository includes a local-first clothing workspace with editable
+templates, canvas controls, layers, colours, fabric textures, image uploads,
+and garment print placement. Projects save to the current device.
 
 ## Quick Start
 
