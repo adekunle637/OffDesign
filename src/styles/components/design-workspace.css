@@ -539,9 +539,11 @@
 }
 
 .workspace-garment__print {
-  position: relative;
+  position: absolute;
   z-index: 3;
   display: grid;
+  top: var(--print-y);
+  left: var(--print-x);
   width: var(--print-width);
   height: var(--print-height);
   max-width: 55%;
@@ -555,8 +557,7 @@
   line-height: 1;
   text-align: center;
   text-shadow: 0 1px 1px rgb(0 0 0 / 28%);
-  transform: translate(calc(var(--print-x) - 50%), calc(var(--print-y) - 50%))
-    scale(calc(var(--print-scale) / 100));
+  transform: translate(-50%, -50%) scale(calc(var(--print-scale) / 100));
   transform-origin: center;
   mix-blend-mode: screen;
   pointer-events: none;
@@ -569,6 +570,14 @@
   object-fit: contain;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 22%));
   user-select: none;
+}
+
+.workspace-garment__placed-artwork {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-area: 1 / 1;
+  place-items: center;
 }
 
 .workspace-garment__print-text {
@@ -585,7 +594,14 @@
   overflow: visible;
   color: var(--object-colour);
   text-align: center;
-  white-space: nowrap;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.workspace-text-object[contenteditable='true'] {
+  min-height: 1.2em;
+  outline: 1px dashed var(--color-accent);
+  cursor: text;
 }
 
 .workspace-image-wrap {
@@ -1305,7 +1321,8 @@
 }
 
 .workspace-properties-grid input,
-.workspace-properties-grid select {
+.workspace-properties-grid select,
+.workspace-properties-grid textarea {
   width: 100%;
   min-height: 2rem;
   padding: 0.25rem 0.4rem;
@@ -1316,6 +1333,11 @@
   color: var(--color-ink);
   font: inherit;
   font-size: 0.69rem;
+}
+
+.workspace-properties-grid textarea {
+  resize: vertical;
+  line-height: 1.35;
 }
 
 .workspace-properties-grid input.visually-hidden {
@@ -1333,9 +1355,49 @@
 
 .workspace-properties-grid input:focus,
 .workspace-properties-grid select:focus,
+.workspace-properties-grid textarea:focus,
 .workspace-text-entry input:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgb(120 86 243 / 12%);
+}
+
+.workspace-text-style-presets {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0.42rem;
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 33%, var(--color-border));
+  border-radius: 0.56rem;
+  background: var(--color-accent-soft);
+}
+
+.workspace-text-style-presets > span {
+  margin-right: 0.2rem;
+  color: var(--color-ink-muted);
+  font-size: 0.61rem;
+  font-weight: 760;
+}
+
+.workspace-text-style-preset {
+  min-height: 1.85rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.63rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.workspace-text-style-preset:hover,
+.workspace-text-style-preset.is-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  color: var(--color-accent-strong);
 }
 
 .workspace-image-replace,
@@ -1419,6 +1481,18 @@
 .workspace-placement-callout button {
   cursor: pointer;
   white-space: nowrap;
+}
+
+.workspace-placement-callout select {
+  min-width: 7rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.48rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.65rem;
 }
 
 .workspace-object-tools {

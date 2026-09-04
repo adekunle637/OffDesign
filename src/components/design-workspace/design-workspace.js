@@ -11,6 +11,7 @@ import { getEditorDefinition, objectToolSets } from './workspace-config.js';
 
 const MAX_HISTORY = 60;
 const AUTO_SAVE_DELAY = 700;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 export function createDesignWorkspace(editorId) {
   const workspace = new DesignWorkspace(getEditorDefinition(editorId));
@@ -97,6 +98,10 @@ class DesignWorkspace {
     this.element.addEventListener('click', (event) => this.handleClick(event), { signal });
     this.element.addEventListener('change', (event) => this.handleChange(event), { signal });
     this.element.addEventListener('input', (event) => this.handleInput(event), { signal });
+    this.element.addEventListener('focusout', (event) => this.handleFocusOut(event), { signal });
+    this.element.addEventListener('dblclick', (event) => this.handleDoubleClick(event), {
+      signal,
+    });
     this.element.addEventListener('dragstart', (event) => this.handleDragStart(event), { signal });
     this.element.addEventListener('dragover', (event) => this.handleDragOver(event), { signal });
     this.element.addEventListener('drop', (event) => this.handleDrop(event), { signal });
@@ -196,6 +201,12 @@ class DesignWorkspace {
       return;
     }
 
+    const textPreset = target.closest('[data-text-preset]')?.dataset.textPreset;
+    if (textPreset) {
+      this.applyTextPreset(textPreset);
+      return;
+    }
+
     const layerAction = target.closest('[data-layer-action]');
     if (layerAction) {
       this.runLayerAction(layerAction.dataset.layerAction, layerAction.dataset.objectId);
@@ -210,7 +221,11 @@ class DesignWorkspace {
 
   handleChange(event) {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) {
+    if (!(
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLTextAreaElement
+    )) {
       return;
     }
 
@@ -248,6 +263,11 @@ class DesignWorkspace {
       return;
     }
 
+    if (target.matches('[data-text-content]')) {
+      this.updateSelectedProperty('text', target.value);
+      return;
+    }
+
     if (target.matches('[data-font-family]')) {
       this.updateSelectedProperty('fontFamily', target.value);
       return;
@@ -256,17 +276,64 @@ class DesignWorkspace {
     if (target.matches('[data-font-weight]')) {
       this.updateSelectedProperty('fontWeight', target.value);
     }
+
+    if (target.matches('[data-placement-target]')) {
+      this.state.placementTargetId = target.value || null;
+    }
   }
 
   handleInput(event) {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
-      return;
-    }
-
-    if (target.matches('[data-project-name]')) {
+    if (target instanceof HTMLInputElement && target.matches('[data-project-name]')) {
       this.state.projectName = target.value || this.definition.defaultProjectName;
       this.updateProjectName();
+    }
+
+    if (target instanceof HTMLElement && target.matches('[data-text-editor]')) {
+      const object = this.findObject(target.closest('[data-object-id]')?.dataset.objectId);
+      if (!object || object.kind !== 'text') {
+        return;
+      }
+      const value = target.textContent?.slice(0, 160) ?? '';
+      object.text = value;
+      object.name = textObjectName(value);
+    }
+  }
+
+  handleFocusOut(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-text-editor]')) {
+      return;
+    }
+    target.contentEditable = 'false';
+    const object = this.findObject(target.closest('[data-object-id]')?.dataset.objectId);
+    if (!object || object.kind !== 'text') {
+      return;
+    }
+    object.text = object.text.trim() || 'New text';
+    object.name = textObjectName(object.text);
+    this.markDirty();
+    this.render();
+  }
+
+  handleDoubleClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const objectElement = target?.closest('[data-object-id]');
+    if (!objectElement || !target?.closest('[data-text-editor]')) {
+      return;
+    }
+    const object = this.findObject(objectElement.dataset.objectId);
+    if (!object || object.kind !== 'text' || object.locked) {
+      return;
+    }
+    event.preventDefault();
+    this.selectObject(object.id);
+    const editor = this.element.querySelector(`[data-object-id="${object.id}"] [data-text-editor]`);
+    if (editor instanceof HTMLElement) {
+      this.commit();
+      editor.contentEditable = 'true';
+      editor.focus();
+      document.getSelection()?.selectAllChildren(editor);
     }
   }
 
@@ -315,6 +382,10 @@ class DesignWorkspace {
     }
 
     if (target.closest('[data-object-popover]')) {
+      return;
+    }
+
+    if (target.closest('[data-text-editor][contenteditable="true"]')) {
       return;
     }
 
@@ -566,6 +637,11 @@ class DesignWorkspace {
 
   async importImage(file, position = null) {
     if (!file.type.startsWith('image/')) {
+      this.setSaveState('Choose an image file to upload');
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      this.setSaveState('Choose an image smaller than 10 MB');
       return;
     }
 
@@ -574,17 +650,12 @@ class DesignWorkspace {
       if (!this.element.isConnected) {
         return;
       }
-      this.commit();
-      const garment = this.selectedObjects().find((object) => object.kind === 'garment');
-      if (garment) {
-        garment.printAsset = createGarmentArtworkFromImage(source, file.name);
-        this.state.selectedIds = [garment.id];
-        this.openSelectionTools();
-        this.markDirty();
-        this.render();
+      const dimensions = await readImageDimensions(source);
+      if (!this.element.isConnected) {
         return;
       }
-      const object = createImageObject(source, file.name, position);
+      this.commit();
+      const object = createImageObject(source, file.name, position, dimensions);
       this.state.objects.push(object);
       this.state.selectedIds = [object.id];
       this.openSelectionTools();
@@ -628,6 +699,17 @@ class DesignWorkspace {
     ]);
     const value = numericProperties.has(property) ? Number(rawValue) : rawValue;
     this.selectedObjects().forEach((object) => {
+      if (property === 'text' && object.kind === 'text') {
+        object.text = value.slice(0, 160) || 'New text';
+        object.name = textObjectName(object.text);
+        return;
+      }
+      if (property === 'width' || property === 'height') {
+        object[property] = clamp(value, 2, 100);
+        object.x = clamp(object.x, 0, 100 - object.width);
+        object.y = clamp(object.y, 0, 100 - object.height);
+        return;
+      }
       object[property] = property === 'opacity' ? clamp(value, 0, 100) : value;
     });
     this.markDirty();
@@ -709,7 +791,7 @@ class DesignWorkspace {
       hide: () => this.toggleSelectedBoolean('hidden'),
       flip: () => this.toggleSelectedBoolean('flipped'),
       rotate: () => this.rotateSelected(15),
-      crop: () => this.updateSelectedProperty('crop', 'center'),
+      crop: () => this.toggleImageFit(),
       mirror: () => this.toggleSelectedBoolean('flipped'),
       'open-colour': () => this.openCategory('colour'),
       'open-fabrics': () => this.openCategory('fabrics'),
@@ -723,6 +805,59 @@ class DesignWorkspace {
     actions[action]?.();
   }
 
+  applyTextPreset(preset) {
+    const styles = {
+      clean: {
+        fontFamily: 'system-ui',
+        fontWeight: '700',
+        letterSpacing: 0,
+        textTransform: 'none',
+      },
+      editorial: {
+        fontFamily: 'Georgia',
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        textTransform: 'none',
+      },
+      street: {
+        fontFamily: 'Arial Black, Impact, sans-serif',
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+      },
+      script: { fontFamily: 'cursive', fontWeight: '700', letterSpacing: 0, textTransform: 'none' },
+      mono: {
+        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+      },
+    };
+    const style = styles[preset];
+    const textObjects = this.selectedObjects().filter((object) => object.kind === 'text');
+    if (!style || !textObjects.length) {
+      this.setSaveState('Select a text layer to apply a style');
+      return;
+    }
+    this.commit();
+    textObjects.forEach((object) => Object.assign(object, style, { textPreset: preset }));
+    this.markDirty();
+    this.render();
+  }
+
+  toggleImageFit() {
+    const images = this.selectedObjects().filter((object) => object.kind === 'image');
+    if (!images.length) {
+      return;
+    }
+    this.commit();
+    images.forEach((object) => {
+      object.imageFit = object.imageFit === 'contain' ? 'cover' : 'contain';
+    });
+    this.markDirty();
+    this.render();
+  }
+
   resizeObjectFromPointer(event, artboard) {
     const state = this.dragState;
     const object = this.findObject(state.objectId);
@@ -734,6 +869,29 @@ class DesignWorkspace {
     const deltaY = this.snapValue(((event.clientY - state.origin.y) / rect.height) * 100);
     const right = state.object.x + state.object.width;
     const bottom = state.object.y + state.object.height;
+
+    if (object.kind === 'image' && !event.shiftKey) {
+      const widthLimit = state.handle === 'se' ? 100 - state.object.x : right;
+      const heightLimit = state.handle === 'se' ? 100 - state.object.y : bottom;
+      const requestedWidth =
+        state.handle === 'se' ? state.object.width + deltaX : state.object.width - deltaX;
+      const boardRatio = rect.width / rect.height;
+      const aspectRatio =
+        object.aspectRatio ?? (state.object.width * boardRatio) / state.object.height;
+      let width = clamp(requestedWidth, 2, widthLimit);
+      let height = (width * boardRatio) / aspectRatio;
+      if (height > heightLimit) {
+        height = heightLimit;
+        width = (height * aspectRatio) / boardRatio;
+      }
+      object.width = width;
+      object.height = clamp(height, 2, heightLimit);
+      if (state.handle === 'nw') {
+        object.x = right - object.width;
+        object.y = bottom - object.height;
+      }
+      return;
+    }
 
     if (state.handle === 'se') {
       object.width = clamp(state.object.width + deltaX, 2, 100 - state.object.x);
@@ -749,17 +907,22 @@ class DesignWorkspace {
 
   async replaceSelectedImage(file) {
     const image = this.selectedObjects().find((object) => object.kind === 'image');
-    if (!image || !file.type.startsWith('image/')) {
+    if (!image || !file.type.startsWith('image/') || file.size > MAX_IMAGE_SIZE) {
+      if (file.size > MAX_IMAGE_SIZE) {
+        this.setSaveState('Choose an image smaller than 10 MB');
+      }
       return;
     }
     try {
       const source = await readFileAsDataUrl(file);
+      const dimensions = await readImageDimensions(source);
       if (!this.element.isConnected) {
         return;
       }
       this.commit();
       image.source = source;
       image.name = file.name || 'Imported image';
+      image.aspectRatio = dimensions.width / dimensions.height;
       this.markDirty();
       this.render();
     } catch {
@@ -768,7 +931,10 @@ class DesignWorkspace {
   }
 
   placeSelectedDesignOnGarment() {
-    const garment = this.selectedObjects().find((object) => object.kind === 'garment');
+    const garment =
+      this.selectedObjects().find((object) => object.kind === 'garment') ??
+      this.findObject(this.state.placementTargetId) ??
+      this.state.objects.find((object) => object.kind === 'garment');
     const design = this.selectedObjects().find((object) => object.kind !== 'garment');
     if (!garment || !design) {
       this.setSaveState('Select a garment and a design to place it');
@@ -780,21 +946,26 @@ class DesignWorkspace {
       return;
     }
     this.commit();
-    garment.printAsset = artwork;
-    this.state.objects = this.state.objects.filter((object) => object.id !== design.id);
-    this.state.selectedIds = [garment.id];
+    garment.printAssets = [...(garment.printAssets ?? legacyPrintAssets(garment)), artwork];
+    delete garment.printAsset;
+    this.state.placementTargetId = garment.id;
+    this.state.selectedIds = [design.id];
     this.markDirty();
     this.render();
   }
 
   clearGarmentDesign() {
     const garments = this.selectedObjects().filter((object) => object.kind === 'garment');
-    if (!garments.length || !garments.some((object) => object.printAsset)) {
+    if (
+      !garments.length ||
+      !garments.some((object) => object.printAsset || object.printAssets?.length)
+    ) {
       return;
     }
     this.commit();
     garments.forEach((object) => {
       delete object.printAsset;
+      delete object.printAssets;
     });
     this.markDirty();
     this.render();
@@ -1263,10 +1434,18 @@ class DesignWorkspace {
     const canPlaceOnGarment =
       selected.some((item) => item.kind === 'garment') &&
       selected.some((item) => item.kind !== 'garment');
+    const boardDesign = selected.find((item) => item.kind !== 'garment');
+    const garments = this.state.objects.filter((item) => item.kind === 'garment');
+    const placementTarget =
+      selected.find((item) => item.kind === 'garment') ??
+      this.findObject(this.state.placementTargetId) ??
+      garments[0];
+    const canChooseGarment = boardDesign && garments.length;
     return `
       <div class="workspace-selection-summary"><span class="workspace-object-dot workspace-object-dot--${object.kind}"></span><div><strong>${escapeHtml(object.name)}</strong><small>${escapeHtml(object.kind)}${selected.length > 1 ? ` · ${selected.length} objects` : ''}</small></div></div>
       ${this.propertyMarkup(object)}
-      ${canPlaceOnGarment ? '<div class="workspace-placement-callout"><i data-lucide="stamp"></i><span>Ready to place this design on the selected garment.</span><button type="button" data-workspace-action="place-on-garment">Place on garment</button></div>' : ''}
+      ${canPlaceOnGarment ? '<div class="workspace-placement-callout"><i data-lucide="stamp"></i><span>Ready to place a copy of this design on the selected garment.</span><button type="button" data-workspace-action="place-on-garment">Place on garment</button></div>' : ''}
+      ${!canPlaceOnGarment && canChooseGarment ? `<div class="workspace-placement-callout"><i data-lucide="stamp"></i><span>Place a copy on a garment while keeping this board layer editable.</span><select data-placement-target aria-label="Garment to receive this design">${garments.map((garment) => `<option value="${garment.id}" ${placementTarget?.id === garment.id ? 'selected' : ''}>${escapeHtml(garment.name)}</option>`).join('')}</select><button type="button" data-workspace-action="place-on-garment">Place on garment</button></div>` : ''}
       <div class="workspace-object-tools">${tools.map((tool) => `<button type="button" class="workspace-object-tool" data-object-action="${objectActionFromLabel(tool)}">${tool}</button>`).join('')}</div>
     `;
   }
@@ -1281,9 +1460,9 @@ class DesignWorkspace {
         <label>Height<input type="number" min="2" max="100" value="${round(object.height)}" data-object-property="height" /></label>
         <label>Rotate<input type="number" min="-360" max="360" value="${round(object.rotation)}" data-object-property="rotation" /></label>
         <label>Opacity<input type="number" min="0" max="100" value="${round(object.opacity)}" data-object-property="opacity" /></label>
-        ${object.kind === 'text' ? `<label>Font<select data-font-family><option value="system-ui" ${object.fontFamily === 'system-ui' ? 'selected' : ''}>System Sans</option><option value="Georgia" ${object.fontFamily === 'Georgia' ? 'selected' : ''}>Georgia</option><option value="monospace" ${object.fontFamily === 'monospace' ? 'selected' : ''}>Mono</option></select></label><label>Weight<select data-font-weight><option value="500" ${object.fontWeight === '500' ? 'selected' : ''}>Regular</option><option value="700" ${object.fontWeight === '700' ? 'selected' : ''}>Bold</option><option value="900" ${object.fontWeight === '900' ? 'selected' : ''}>Black</option></select></label><label>Size<input type="number" min="8" max="240" value="${round(object.fontSize)}" data-object-property="fontSize" /></label><label>Tracking<input type="number" min="-10" max="30" value="${round(object.letterSpacing)}" data-object-property="letterSpacing" /></label>` : ''}
-        ${object.kind === 'image' ? `<label class="workspace-property--wide workspace-image-replace">Replace image<input class="visually-hidden" type="file" accept="image/*" data-image-replace /><span><i data-lucide="refresh-cw"></i> Choose another image</span></label>` : ''}
-        ${object.kind === 'garment' ? `<label class="workspace-property--wide">Print text<input type="text" maxlength="28" value="${escapeAttribute(object.printText ?? 'YOUR MARK')}" data-object-property="printText" /></label><label>Print colour<input type="color" value="${escapeAttribute(object.printColour ?? '#f7f2e8')}" data-object-property="printColour" /></label><label>Print scale<input type="number" min="40" max="170" value="${round(object.printScale ?? 100)}" data-object-property="printScale" /></label><div class="workspace-garment-design-control"><span>${object.printAsset ? `Placed design: ${escapeHtml(object.printAsset.name)}` : 'No uploaded design yet'}</span><label class="workspace-inline-upload"><input class="visually-hidden" type="file" accept="image/*" data-image-input /><i data-lucide="image-up"></i> Upload design</label>${object.printAsset ? '<button type="button" data-workspace-action="clear-garment-design">Remove design</button>' : ''}</div>` : ''}
+        ${object.kind === 'text' ? textPropertiesMarkup(object) : ''}
+        ${object.kind === 'image' ? `<label>Image fit<select data-object-property="imageFit"><option value="contain" ${object.imageFit === 'contain' ? 'selected' : ''}>Show whole image</option><option value="cover" ${object.imageFit === 'cover' ? 'selected' : ''}>Fill frame</option></select></label><label class="workspace-property--wide workspace-image-replace">Replace image<input class="visually-hidden" type="file" accept="image/*" data-image-replace /><span><i data-lucide="refresh-cw"></i> Choose another image</span></label>` : ''}
+        ${object.kind === 'garment' ? garmentPropertiesMarkup(object) : ''}
       </div>`;
   }
 
@@ -1308,6 +1487,7 @@ function createDefaultState(definition) {
     toolbarExpanded: false,
     templateCategory: 'essentials',
     selectedIds: [],
+    placementTargetId: null,
     panMode: false,
     artboard: {
       backgroundKind: 'white',
@@ -1385,7 +1565,7 @@ function createTextObject(text, position = {}) {
   return {
     id: createId(),
     kind: 'text',
-    name: text.length > 18 ? `${text.slice(0, 18)}…` : text,
+    name: textObjectName(text),
     text,
     x: position.x ?? 34,
     y: position.y ?? 42,
@@ -1399,6 +1579,9 @@ function createTextObject(text, position = {}) {
     fontSize: 34,
     letterSpacing: 0,
     lineHeight: 1.1,
+    textAlign: 'center',
+    textTransform: 'none',
+    textPreset: 'clean',
     outline: false,
     shadow: false,
     gradient: false,
@@ -1408,19 +1591,26 @@ function createTextObject(text, position = {}) {
   };
 }
 
-function createImageObject(source, name, position = {}) {
+function createImageObject(source, name, position = {}, dimensions = {}) {
+  const initialPosition = position ?? {};
+  const aspectRatio =
+    dimensions.width && dimensions.height ? dimensions.width / dimensions.height : 1;
+  const width = clamp(Math.min(30, (52 * aspectRatio) / 1.6), 2, 30);
+  const height = clamp((width * 1.6) / aspectRatio, 8, 52);
   return {
     id: createId(),
     kind: 'image',
     name: name || 'Imported image',
     source,
-    x: position.x ?? 34,
-    y: position.y ?? 30,
-    width: 32,
-    height: 32,
+    x: clamp(initialPosition.x ?? 34, 0, 100 - width),
+    y: clamp(initialPosition.y ?? 30, 0, 100 - height),
+    width,
+    height,
     rotation: 0,
     opacity: 100,
     colour: '#ffffff',
+    aspectRatio,
+    imageFit: 'contain',
     locked: false,
     hidden: false,
     flipped: false,
@@ -1481,7 +1671,7 @@ function objectMarkup(object, selected) {
   let content = '';
   if (object.kind === 'garment') {
     const printZone = object.printZone ?? { x: 50, y: 50, width: 34, height: 16 };
-    const printContent = garmentArtworkMarkup(object.printAsset, object);
+    const printContent = garmentArtworkMarkup(object);
     content = `<div class="workspace-garment workspace-garment--mockup" data-texture="${escapeAttribute(object.texture ?? 'plain')}"><img class="workspace-garment__mockup" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)} editable mockup" draggable="false" /><span class="workspace-garment__colour-wash" aria-hidden="true"></span><span class="workspace-garment__texture" aria-hidden="true"></span><span class="workspace-garment__print" style="--print-x:${printZone.x}%;--print-y:${printZone.y}%;--print-width:${printZone.width}%;--print-height:${printZone.height}%;--print-colour:${escapeAttribute(object.printColour ?? '#f7f2e8')};--print-scale:${object.printScale ?? 100}%">${printContent}</span></div>`;
   }
   if (object.kind === 'text') {
@@ -1491,6 +1681,8 @@ function objectMarkup(object, selected) {
       `font-size:${object.fontSize}px`,
       `letter-spacing:${object.letterSpacing}px`,
       `line-height:${object.lineHeight}`,
+      `text-align:${escapeAttribute(object.textAlign ?? 'center')}`,
+      `text-transform:${escapeAttribute(object.textTransform ?? 'none')}`,
       object.outline
         ? '-webkit-text-stroke:1px color-mix(in srgb, var(--object-colour) 70%, #111827)'
         : '',
@@ -1501,10 +1693,10 @@ function objectMarkup(object, selected) {
     ]
       .filter(Boolean)
       .join(';');
-    content = `<p class="workspace-text-object" style="${textStyles}">${escapeHtml(object.text)}</p>`;
+    content = `<p class="workspace-text-object" style="${textStyles}" data-text-editor contenteditable="false" spellcheck="true">${escapeHtml(object.text)}</p>`;
   }
   if (object.kind === 'image') {
-    content = `<span class="workspace-image-wrap"><img class="workspace-image-object" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)}" draggable="false" /><span class="workspace-image-object__colour-wash" aria-hidden="true"></span></span>`;
+    content = `<span class="workspace-image-wrap"><img class="workspace-image-object" style="object-fit:${escapeAttribute(object.imageFit ?? 'contain')}" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)}" draggable="false" /></span>`;
   }
   if (object.kind === 'shape') {
     content = `<span class="workspace-shape workspace-shape--${escapeAttribute(object.shape)}"></span>`;
@@ -1562,22 +1754,91 @@ function createGarmentArtworkFromImage(source, name) {
 
 function createGarmentArtwork(object) {
   if (object.kind === 'image') {
-    return createGarmentArtworkFromImage(object.source, object.name);
+    return {
+      ...createGarmentArtworkFromImage(object.source, object.name),
+      imageFit: object.imageFit ?? 'contain',
+    };
   }
   if (object.kind === 'text') {
-    return { kind: 'text', text: object.text, name: object.name, colour: object.colour };
+    return {
+      kind: 'text',
+      text: object.text,
+      name: object.name,
+      colour: object.colour,
+      fontFamily: object.fontFamily,
+      fontWeight: object.fontWeight,
+      letterSpacing: object.letterSpacing,
+      textTransform: object.textTransform,
+      outline: object.outline,
+      shadow: object.shadow,
+      gradient: object.gradient,
+    };
   }
   return null;
 }
 
-function garmentArtworkMarkup(artwork, garment) {
-  if (artwork?.kind === 'image') {
-    return `<img class="workspace-garment__print-image" src="${escapeAttribute(artwork.source)}" alt="${escapeAttribute(artwork.name)} placed on ${escapeAttribute(garment.name)}" draggable="false" />`;
+function garmentArtworkMarkup(garment) {
+  const artworks = garment.printAssets?.length ? garment.printAssets : legacyPrintAssets(garment);
+  if (!artworks.length) {
+    return escapeHtml(garment.printText ?? 'YOUR MARK');
   }
-  if (artwork?.kind === 'text') {
-    return `<span class="workspace-garment__print-text" style="--placed-design-colour:${escapeAttribute(artwork.colour ?? garment.printColour ?? '#f7f2e8')}">${escapeHtml(artwork.text)}</span>`;
-  }
-  return escapeHtml(garment.printText ?? 'YOUR MARK');
+  return artworks
+    .map((artwork, index) => {
+      if (artwork.kind === 'image') {
+        return `<span class="workspace-garment__placed-artwork" style="--placed-artwork-index:${index}"><img class="workspace-garment__print-image" style="object-fit:${escapeAttribute(artwork.imageFit ?? 'contain')}" src="${escapeAttribute(artwork.source)}" alt="${escapeAttribute(artwork.name)} placed on ${escapeAttribute(garment.name)}" draggable="false" /></span>`;
+      }
+      if (artwork.kind === 'text') {
+        const textStyle = [
+          `--placed-design-colour:${escapeAttribute(artwork.colour ?? garment.printColour ?? '#f7f2e8')}`,
+          `font-family:${escapeAttribute(artwork.fontFamily ?? 'system-ui')}`,
+          `font-weight:${escapeAttribute(artwork.fontWeight ?? '900')}`,
+          `letter-spacing:${artwork.letterSpacing ?? 0}px`,
+          `text-transform:${escapeAttribute(artwork.textTransform ?? 'none')}`,
+          artwork.outline
+            ? '-webkit-text-stroke:1px color-mix(in srgb, var(--placed-design-colour) 70%, #111827)'
+            : '',
+          artwork.shadow ? 'text-shadow:0 2px 4px rgb(15 23 42 / 40%)' : '',
+          artwork.gradient
+            ? 'background:linear-gradient(135deg, var(--placed-design-colour), #f66e9e);-webkit-background-clip:text;background-clip:text;color:transparent'
+            : '',
+        ]
+          .filter(Boolean)
+          .join(';');
+        return `<span class="workspace-garment__placed-artwork" style="--placed-artwork-index:${index}"><span class="workspace-garment__print-text" style="${textStyle}">${escapeHtml(artwork.text)}</span></span>`;
+      }
+      return '';
+    })
+    .join('');
+}
+
+function legacyPrintAssets(garment) {
+  return garment.printAsset ? [garment.printAsset] : [];
+}
+
+function textPropertiesMarkup(object) {
+  return `
+    <label class="workspace-property--wide">Text<textarea rows="2" maxlength="160" data-text-content>${escapeHtml(object.text)}</textarea></label>
+    <label>Font<select data-font-family><option value="system-ui" ${object.fontFamily === 'system-ui' ? 'selected' : ''}>System Sans</option><option value="Georgia" ${object.fontFamily === 'Georgia' ? 'selected' : ''}>Georgia</option><option value="Arial Black, Impact, sans-serif" ${object.fontFamily === 'Arial Black, Impact, sans-serif' ? 'selected' : ''}>Street</option><option value="cursive" ${object.fontFamily === 'cursive' ? 'selected' : ''}>Script</option><option value="ui-monospace, SFMono-Regular, monospace" ${object.fontFamily === 'ui-monospace, SFMono-Regular, monospace' ? 'selected' : ''}>Mono</option></select></label>
+    <label>Weight<select data-font-weight><option value="500" ${object.fontWeight === '500' ? 'selected' : ''}>Regular</option><option value="700" ${object.fontWeight === '700' ? 'selected' : ''}>Bold</option><option value="900" ${object.fontWeight === '900' ? 'selected' : ''}>Black</option></select></label>
+    <label>Size<input type="number" min="8" max="240" value="${round(object.fontSize)}" data-object-property="fontSize" /></label>
+    <label>Tracking<input type="number" min="-10" max="30" value="${round(object.letterSpacing)}" data-object-property="letterSpacing" /></label>
+    <label>Line height<input type="number" min="0.6" max="3" step="0.1" value="${round(object.lineHeight)}" data-object-property="lineHeight" /></label>
+    <label>Align<select data-object-property="textAlign"><option value="left" ${object.textAlign === 'left' ? 'selected' : ''}>Left</option><option value="center" ${object.textAlign === 'center' ? 'selected' : ''}>Centre</option><option value="right" ${object.textAlign === 'right' ? 'selected' : ''}>Right</option></select></label>
+    <label>Case<select data-object-property="textTransform"><option value="none" ${object.textTransform === 'none' ? 'selected' : ''}>Original</option><option value="uppercase" ${object.textTransform === 'uppercase' ? 'selected' : ''}>UPPERCASE</option><option value="lowercase" ${object.textTransform === 'lowercase' ? 'selected' : ''}>lowercase</option></select></label>
+    <div class="workspace-text-style-presets workspace-property--wide" aria-label="Text style presets"><span>Quick styles</span>${['clean', 'editorial', 'street', 'script', 'mono'].map((preset) => `<button type="button" class="workspace-text-style-preset ${object.textPreset === preset ? 'is-active' : ''}" data-text-preset="${preset}">${capitalize(preset)}</button>`).join('')}</div>`;
+}
+
+function garmentPropertiesMarkup(object) {
+  const placedCount = object.printAssets?.length ?? (object.printAsset ? 1 : 0);
+  return `<label class="workspace-property--wide">Print text<input type="text" maxlength="28" value="${escapeAttribute(object.printText ?? 'YOUR MARK')}" data-object-property="printText" /></label><label>Print colour<input type="color" value="${escapeAttribute(object.printColour ?? '#f7f2e8')}" data-object-property="printColour" /></label><label>Print scale<input type="number" min="40" max="170" value="${round(object.printScale ?? 100)}" data-object-property="printScale" /></label><div class="workspace-garment-design-control"><span>${placedCount ? `${placedCount} placed design${placedCount === 1 ? '' : 's'} · the original board layer stays editable` : 'Add an image or text layer, then select it with this garment to place a copy on the cloth.'}</span><label class="workspace-inline-upload"><input class="visually-hidden" type="file" accept="image/*" data-image-input /><i data-lucide="image-up"></i> Add image layer</label>${placedCount ? '<button type="button" data-workspace-action="clear-garment-design">Remove placed designs</button>' : ''}</div>`;
+}
+
+function textObjectName(text) {
+  const value =
+    String(text ?? '')
+      .replaceAll(/\s+/g, ' ')
+      .trim() || 'New text';
+  return value.length > 18 ? `${value.slice(0, 18)}…` : value;
 }
 
 function colourInputValue(selected, state) {
@@ -1596,6 +1857,24 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
+  });
+}
+
+function readImageDimensions(source) {
+  return new Promise((resolve) => {
+    const image = document.createElement('img');
+    let complete = false;
+    const finish = (dimensions = {}) => {
+      if (complete) {
+        return;
+      }
+      complete = true;
+      resolve(dimensions);
+    };
+    image.onload = () => finish({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => finish();
+    image.src = source;
+    window.setTimeout(() => finish(), 1500);
   });
 }
 
