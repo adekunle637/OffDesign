@@ -316,6 +316,37 @@
   inset: 0;
 }
 
+.workspace-cut-overlay {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.workspace-cut-overlay__shadow {
+  fill: none;
+  stroke: rgb(255 255 255 / 90%);
+  stroke-linecap: round;
+  stroke-width: 1.15;
+}
+
+.workspace-cut-overlay__line {
+  fill: none;
+  stroke: #e4476e;
+  stroke-dasharray: 1.5 1;
+  stroke-linecap: round;
+  stroke-width: 0.45;
+}
+
+.workspace-cut-overlay__point {
+  fill: #fff;
+  stroke: #e4476e;
+  stroke-width: 0.35;
+}
+
 .workspace-artboard__empty {
   position: absolute;
   top: 50%;
@@ -379,6 +410,24 @@
 .workspace-object__handle--se {
   right: -0.28rem;
   bottom: -0.28rem;
+}
+
+.workspace-cut-anchor {
+  position: absolute;
+  z-index: 8;
+  width: 0.72rem;
+  height: 0.72rem;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #e4476e;
+  box-shadow: 0 1px 4px rgb(38 31 45 / 30%);
+  cursor: move;
+  transform: translate(-50%, -50%);
+}
+
+.workspace-cut-anchor--control {
+  background: #f1b252;
 }
 
 .workspace-object__quick-actions {
@@ -586,6 +635,28 @@
   font-weight: 900;
   letter-spacing: 0.08em;
   text-align: center;
+}
+
+.workspace-pattern-piece {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  filter: drop-shadow(0 2px 2px rgb(26 32 45 / 20%));
+}
+
+.workspace-pattern-piece svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.workspace-pattern-piece__seam {
+  fill: none;
+  stroke: rgb(255 255 255 / 80%);
+  stroke-dasharray: 2 1.2;
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
 }
 
 .workspace-text-object {
@@ -1287,6 +1358,10 @@
   background: #e18d5a;
   border-radius: 45% 45% 25% 25%;
 }
+.workspace-object-dot--pattern-piece {
+  background: #e4476e;
+  border-radius: 0.2rem 0.5rem 0.2rem 0.5rem;
+}
 .workspace-object-dot--text {
   background: #5b37d7;
   border-radius: 50%;
@@ -1398,6 +1473,93 @@
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
   color: var(--color-accent-strong);
+}
+
+.workspace-cut-tools,
+.workspace-cut-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.7rem 0;
+}
+
+.workspace-cut-tool {
+  display: inline-flex;
+  gap: 0.32rem;
+  min-height: 2rem;
+  align-items: center;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface-subtle);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.workspace-cut-tool svg {
+  width: 0.85rem;
+}
+
+.workspace-cut-tool:hover,
+.workspace-cut-tool.is-active {
+  border-color: #e4476e;
+  background: #fff0f3;
+  color: #bd264d;
+}
+
+.workspace-cut-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.45rem;
+  padding: 0.52rem;
+  border: 1px dashed color-mix(in srgb, #e4476e 35%, var(--color-border));
+  border-radius: 0.6rem;
+  background: #fff8f9;
+}
+
+.workspace-cut-settings label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--color-ink-muted);
+  font-size: 0.61rem;
+  font-weight: 760;
+}
+
+.workspace-cut-settings input,
+.workspace-cut-settings select {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.48rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.workspace-pattern-piece-info {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.workspace-pattern-piece-info span {
+  padding: 0.23rem 0.38rem;
+  border-radius: 999px;
+  background: #fff0f3;
+  color: #bd264d;
+  font-size: 0.58rem;
+  font-weight: 780;
+}
+
+.workspace-object-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .workspace-image-replace,

@@ -78,6 +78,7 @@ class DesignWorkspace {
               <div class="workspace-guide workspace-guide--vertical" aria-hidden="true"></div>
               <div class="workspace-guide workspace-guide--horizontal" aria-hidden="true"></div>
               <div class="workspace-artboard__objects" data-workspace-objects></div>
+              <svg class="workspace-cut-overlay" data-cut-overlay viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
               <p class="workspace-artboard__empty" data-workspace-empty>${this.definition.emptyHint}</p>
             </div>
           </div>
@@ -207,6 +208,12 @@ class DesignWorkspace {
       return;
     }
 
+    const cutTool = target.closest('[data-cut-tool]')?.dataset.cutTool;
+    if (cutTool) {
+      this.setCutTool(cutTool);
+      return;
+    }
+
     const layerAction = target.closest('[data-layer-action]');
     if (layerAction) {
       this.runLayerAction(layerAction.dataset.layerAction, layerAction.dataset.objectId);
@@ -279,6 +286,16 @@ class DesignWorkspace {
 
     if (target.matches('[data-placement-target]')) {
       this.state.placementTargetId = target.value || null;
+    }
+
+    if (target.matches('[data-cut-precision]')) {
+      this.state.cutPrecision = Number(target.value) || 1;
+      this.markDirty();
+    }
+
+    if (target.matches('[data-cut-seam]')) {
+      this.state.cutSeamAllowance = Number(target.value) || 0;
+      this.markDirty();
     }
   }
 
@@ -389,6 +406,23 @@ class DesignWorkspace {
       return;
     }
 
+    const cutAnchor = target.closest('[data-cut-anchor]');
+    if (cutAnchor) {
+      const object = this.findObject(cutAnchor.closest('[data-object-id]')?.dataset.objectId);
+      if (!object?.cut || object.locked) {
+        return;
+      }
+      this.commit();
+      this.dragState = {
+        kind: 'reshape-cut',
+        objectId: object.id,
+        anchor: cutAnchor.dataset.cutAnchor,
+        committed: true,
+      };
+      event.preventDefault();
+      return;
+    }
+
     const resizeHandle = target.closest('[data-object-resize]');
     if (resizeHandle) {
       const objectElement = resizeHandle.closest('[data-object-id]');
@@ -413,8 +447,13 @@ class DesignWorkspace {
     const objectElement = target.closest('[data-object-id]');
     if (objectElement) {
       const objectId = objectElement.dataset.objectId;
-      this.selectObject(objectId, event.shiftKey);
       const object = this.findObject(objectId);
+      if (this.state.cutTool && isCuttableObject(object) && !object?.locked) {
+        this.startCut(object, event);
+        event.preventDefault();
+        return;
+      }
+      this.selectObject(objectId, event.shiftKey);
       if (!object?.locked) {
         this.dragState = {
           kind: 'object',
@@ -458,7 +497,22 @@ class DesignWorkspace {
     }
 
     const artboard = this.element.querySelector('[data-workspace-artboard]');
-    if (!artboard || !['object', 'resize'].includes(this.dragState.kind)) {
+    if (!artboard) {
+      return;
+    }
+
+    if (this.dragState.kind === 'cut') {
+      this.updateCutPreview(event);
+      return;
+    }
+
+    if (this.dragState.kind === 'reshape-cut') {
+      this.reshapeCutFromPointer(event);
+      this.renderObjects();
+      return;
+    }
+
+    if (!['object', 'resize'].includes(this.dragState.kind)) {
       return;
     }
 
@@ -488,6 +542,15 @@ class DesignWorkspace {
   }
 
   finishPointerAction() {
+    if (this.dragState?.kind === 'cut') {
+      this.finishCut();
+      return;
+    }
+    if (this.dragState?.kind === 'reshape-cut') {
+      this.markDirty();
+      this.dragState = null;
+      return;
+    }
     if (['object', 'resize'].includes(this.dragState?.kind) && this.dragState.committed) {
       this.markDirty();
     }
@@ -511,6 +574,11 @@ class DesignWorkspace {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
       event.preventDefault();
       this.redo();
+    }
+
+    if (event.key === 'Escape' && (this.state.cutTool || this.dragState?.kind === 'cut')) {
+      this.cancelCut();
+      return;
     }
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -556,6 +624,10 @@ class DesignWorkspace {
       'send-backward': () => this.moveSelectedLayer(-1),
       'align-center': () => this.alignSelected('center'),
       'align-middle': () => this.alignSelected('middle'),
+      'align-cut-pieces': () => this.alignCutPieces(),
+      'join-cut-pieces': () => this.joinCutPieces(),
+      'reshape-cut': () => this.toggleCutReshape(),
+      'cancel-cut': () => this.cancelCut(),
       'toggle-snap': () => {
         this.state.artboard.snap = !this.state.artboard.snap;
         this.renderContextPanel();
@@ -801,6 +873,9 @@ class DesignWorkspace {
       'toggle-text-outline': () => this.toggleSelectedBoolean('outline'),
       'toggle-text-shadow': () => this.toggleSelectedBoolean('shadow'),
       'toggle-text-gradient': () => this.toggleSelectedBoolean('gradient'),
+      'align-cut-pieces': () => this.alignCutPieces(),
+      'join-cut-pieces': () => this.joinCutPieces(),
+      'reshape-cut': () => this.toggleCutReshape(),
     };
     actions[action]?.();
   }
@@ -854,6 +929,195 @@ class DesignWorkspace {
     images.forEach((object) => {
       object.imageFit = object.imageFit === 'contain' ? 'cover' : 'contain';
     });
+    this.markDirty();
+    this.render();
+  }
+
+  setCutTool(tool) {
+    const cuttable = this.selectedObjects().find(isCuttableObject);
+    if (!cuttable) {
+      this.setSaveState('Select a garment or pattern piece before cutting');
+      return;
+    }
+    this.state.cutTool = this.state.cutTool === tool ? null : tool;
+    this.state.reshapePieceId = null;
+    this.setSaveState(
+      this.state.cutTool
+        ? `${capitalize(this.state.cutTool)} cut active — drag across the selected piece`
+        : 'Cut tool paused',
+    );
+    this.renderObjects();
+    this.renderContextPanel();
+  }
+
+  startCut(object, event) {
+    const start = this.pointInObject(object.id, event.clientX, event.clientY);
+    if (!start) {
+      return;
+    }
+    this.selectObject(object.id);
+    this.dragState = {
+      kind: 'cut',
+      objectId: object.id,
+      mode: this.state.cutTool,
+      start,
+      cut: null,
+    };
+    this.renderCutPreview();
+  }
+
+  updateCutPreview(event) {
+    const state = this.dragState;
+    const object = this.findObject(state.objectId);
+    const end = this.pointInObject(state.objectId, event.clientX, event.clientY);
+    if (!object || !end) {
+      return;
+    }
+    state.cut = createCutGeometry(
+      state.mode,
+      state.start,
+      end,
+      this.state.cutPrecision,
+      this.state.cutSeamAllowance,
+    );
+    this.renderCutPreview(object, state.cut);
+  }
+
+  finishCut() {
+    const state = this.dragState;
+    const object = this.findObject(state?.objectId);
+    this.clearCutPreview();
+    this.dragState = null;
+    if (!object || !state?.cut || cutLength(state.cut) < 8) {
+      this.setSaveState('Drag a longer line across the piece to make a cut');
+      return;
+    }
+
+    this.commit();
+    const pieces = createCutPieces(object, state.cut);
+    const index = this.state.objects.findIndex((item) => item.id === object.id);
+    this.state.objects.splice(index, 1, ...pieces);
+    this.state.selectedIds = pieces.map((piece) => piece.id);
+    this.state.reshapePieceId = null;
+    this.openSelectionTools();
+    this.markDirty();
+    this.render();
+  }
+
+  cancelCut() {
+    this.state.cutTool = null;
+    this.state.reshapePieceId = null;
+    this.dragState = null;
+    this.clearCutPreview();
+    this.renderObjects();
+    this.renderContextPanel();
+    this.setSaveState('Cut tool paused');
+  }
+
+  pointInObject(objectId, clientX, clientY) {
+    const element = this.element.querySelector(`[data-object-id="${objectId}"]`);
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return null;
+    }
+    return snapCutPoint(
+      {
+        x: clamp(((clientX - rect.left) / rect.width) * 100, 0, 100),
+        y: clamp(((clientY - rect.top) / rect.height) * 100, 0, 100),
+      },
+      this.state.cutPrecision,
+    );
+  }
+
+  renderCutPreview(object = null, cut = this.dragState?.cut) {
+    const overlay = this.element.querySelector('[data-cut-overlay]');
+    const target = object ?? this.findObject(this.dragState?.objectId);
+    if (!(overlay instanceof SVGElement) || !target || !cut) {
+      return;
+    }
+    const globalCut = cutToArtboardCoordinates(target, cut);
+    overlay.innerHTML = `<path class="workspace-cut-overlay__shadow" d="${cutGuidePath(globalCut)}"/><path class="workspace-cut-overlay__line" d="${cutGuidePath(globalCut)}"/><circle class="workspace-cut-overlay__point" cx="${globalCut.start.x}" cy="${globalCut.start.y}" r="0.65"/><circle class="workspace-cut-overlay__point" cx="${globalCut.end.x}" cy="${globalCut.end.y}" r="0.65"/>`;
+  }
+
+  clearCutPreview() {
+    const overlay = this.element.querySelector('[data-cut-overlay]');
+    if (overlay) {
+      overlay.innerHTML = '';
+    }
+  }
+
+  toggleCutReshape() {
+    const piece = this.selectedObjects().find(
+      (object) => object.kind === 'pattern-piece' && object.cut,
+    );
+    if (!piece) {
+      this.setSaveState('Select a cut pattern piece to reshape its seam');
+      return;
+    }
+    this.state.reshapePieceId = this.state.reshapePieceId === piece.id ? null : piece.id;
+    this.state.cutTool = null;
+    this.renderObjects();
+    this.renderContextPanel();
+  }
+
+  reshapeCutFromPointer(event) {
+    const state = this.dragState;
+    const object = this.findObject(state.objectId);
+    const point = this.pointInObject(state.objectId, event.clientX, event.clientY);
+    if (!object?.cut || !point) {
+      return;
+    }
+    const cut = clone(object.cut);
+    if (state.anchor === 'control') {
+      cut.control = point;
+    } else {
+      cut[state.anchor] = snapPointToBoundary(point, this.state.cutPrecision);
+    }
+    this.state.objects
+      .filter((item) => item.kind === 'pattern-piece' && item.cutGroup === object.cutGroup)
+      .forEach((piece) => {
+        piece.cut = clone(cut);
+        piece.clipPaths = [
+          ...piece.clipPaths.slice(0, -1),
+          buildCutPiecePath(cut, piece.pieceSide),
+        ];
+      });
+  }
+
+  alignCutPieces() {
+    const pieces = this.selectedObjects().filter((object) => object.kind === 'pattern-piece');
+    if (pieces.length < 2 || !pieces.every((piece) => sameSourceFrame(piece, pieces[0]))) {
+      this.setSaveState('Select related cut pieces to align their seam precisely');
+      return;
+    }
+    this.commit();
+    pieces.forEach((piece) => Object.assign(piece, clone(piece.sourceFrame)));
+    this.markDirty();
+    this.render();
+  }
+
+  joinCutPieces() {
+    const pieces = this.selectedObjects().filter((object) => object.kind === 'pattern-piece');
+    if (
+      pieces.length !== 2 ||
+      !pieces[0].cutGroup ||
+      pieces[0].cutGroup !== pieces[1].cutGroup ||
+      !sameSourceFrame(pieces[0], pieces[1])
+    ) {
+      this.setSaveState('Select the two matching cut pieces to align and join them');
+      return;
+    }
+    this.commit();
+    const joined = createJoinedPiece(pieces[0]);
+    const ids = new Set(pieces.map((piece) => piece.id));
+    const index = this.state.objects.findIndex((object) => ids.has(object.id));
+    this.state.objects = this.state.objects.filter((object) => !ids.has(object.id));
+    this.state.objects.splice(index, 0, joined);
+    this.state.selectedIds = [joined.id];
+    this.state.reshapePieceId = null;
     this.markDirty();
     this.render();
   }
@@ -1251,7 +1515,13 @@ class DesignWorkspace {
       return;
     }
     objects.innerHTML = this.state.objects
-      .map((object) => objectMarkup(object, this.state.selectedIds.includes(object.id)))
+      .map((object) =>
+        objectMarkup(
+          object,
+          this.state.selectedIds.includes(object.id),
+          this.state.reshapePieceId === object.id,
+        ),
+      )
       .join('');
     empty.hidden = this.state.objects.length > 0;
     hydrateIcons(this.element);
@@ -1387,7 +1657,7 @@ class DesignWorkspace {
       return this.layersMarkup();
     }
     if (category === 'measurements') {
-      return `<div class="workspace-measurements"><p class="workspace-panel-note">Select a garment to tune individual pattern-piece measurements. Cut and join actions are modelled as non-destructive object operations for future garment-section tooling.</p>${this.propertyMarkup(selected[0])}<button class="workspace-switch" type="button" data-workspace-action="toggle-snap" aria-pressed="${this.state.artboard.snap}"><i data-lucide="magnet"></i> Snap to grid <span>${this.state.artboard.snap ? 'On' : 'Off'}</span></button></div>`;
+      return this.measurementsMarkup(selected);
     }
     if (category === 'align') {
       return `<div class="workspace-action-row"><button class="workspace-tool-card" type="button" data-workspace-action="align-center"><i data-lucide="align-center"></i><strong>Centre</strong></button><button class="workspace-tool-card" type="button" data-workspace-action="align-middle"><i data-lucide="align-vertical-justify-center"></i><strong>Middle</strong></button><button class="workspace-tool-card" type="button" data-workspace-action="toggle-snap"><i data-lucide="magnet"></i><strong>Snap</strong></button></div>`;
@@ -1422,6 +1692,21 @@ class DesignWorkspace {
       <div class="workspace-colour-layout">
         <section><p class="workspace-mini-heading">${selected ? 'Selected object' : 'Artboard background'}</p><label class="workspace-colour-picker"><input type="color" value="${escapeAttribute(colourInputValue(selected, this.state))}" ${selected ? 'data-object-colour' : 'data-background-colour'} /><span>${selected ? 'Custom colour' : 'Custom background'}</span></label><div class="workspace-colour-values"><span>HEX</span><code>${escapeHtml(selected?.colour ?? this.state.artboard.backgroundValue)}</code><span>Opacity</span><code>${selected?.opacity ?? 100}%</code></div></section>
         <section><p class="workspace-mini-heading">Artboard</p><div class="workspace-background-options"><button type="button" data-workspace-action="background-white">White</button><button type="button" data-workspace-action="background-transparent">Transparent</button><button type="button" data-workspace-action="background-gradient-violet">Gradient</button><button type="button" data-workspace-action="background-gradient-warm">Warm gradient</button></div><p class="workspace-panel-note">Solid, HEX/RGB/HSL-ready custom colour, opacity, and gradients are preserved in every saved workspace.</p></section>
+      </div>`;
+  }
+
+  measurementsMarkup(selected) {
+    const cuttable = selected.find(isCuttableObject);
+    const pieces = selected.filter((object) => object.kind === 'pattern-piece');
+    const cutActive = this.state.cutTool;
+    const canJoin = pieces.length === 2 && pieces[0].cutGroup === pieces[1].cutGroup;
+    return `
+      <div class="workspace-measurements">
+        <p class="workspace-panel-note">Choose a cut, then drag directly across a garment or a pattern piece. Every cut is non-destructive: the resulting pieces stay on the board, can be moved, re-cut, reshaped, aligned, and joined again.</p>
+        ${cuttable ? `<div class="workspace-cut-tools" aria-label="Precision cut tools"><button class="workspace-cut-tool ${cutActive === 'straight' ? 'is-active' : ''}" type="button" data-cut-tool="straight"><i data-lucide="minus"></i> Straight</button><button class="workspace-cut-tool ${cutActive === 'slant' ? 'is-active' : ''}" type="button" data-cut-tool="slant"><i data-lucide="slash"></i> Slant</button><button class="workspace-cut-tool ${cutActive === 'curve' ? 'is-active' : ''}" type="button" data-cut-tool="curve"><i data-lucide="spline"></i> Curved</button>${cutActive ? '<button class="workspace-cut-tool" type="button" data-workspace-action="cancel-cut"><i data-lucide="x"></i> Stop cut</button>' : ''}</div><div class="workspace-cut-settings"><label>Precision<select data-cut-precision><option value="0.25" ${this.state.cutPrecision === 0.25 ? 'selected' : ''}>0.25%</option><option value="0.5" ${this.state.cutPrecision === 0.5 ? 'selected' : ''}>0.5%</option><option value="1" ${this.state.cutPrecision === 1 ? 'selected' : ''}>1%</option><option value="2" ${this.state.cutPrecision === 2 ? 'selected' : ''}>2%</option></select></label><label>Seam allowance<input type="number" min="0" max="5" step="0.1" value="${round(this.state.cutSeamAllowance)}" data-cut-seam />%</label></div><p class="workspace-panel-note">${cutActive ? `${capitalize(cutActive)} cut is active. Drag from one edge to another; for a curved seam, use Reshape cut to move the centre handle.` : 'Tip: Shift-select the two matching pieces to align or join them perfectly.'}</p>` : '<p class="workspace-panel-note">Select a garment, image, or existing pattern piece to enable precision cutting.</p>'}
+        ${pieces.length ? `<div class="workspace-cut-actions"><button class="workspace-object-tool" type="button" data-workspace-action="reshape-cut">Reshape cut</button><button class="workspace-object-tool" type="button" data-workspace-action="align-cut-pieces" ${pieces.length < 2 ? 'disabled' : ''}>Align seam</button><button class="workspace-object-tool" type="button" data-workspace-action="join-cut-pieces" ${canJoin ? '' : 'disabled'}>Join selected</button></div>` : ''}
+        ${this.propertyMarkup(selected[0])}
+        <button class="workspace-switch" type="button" data-workspace-action="toggle-snap" aria-pressed="${this.state.artboard.snap}"><i data-lucide="magnet"></i> Board snap <span>${this.state.artboard.snap ? 'On' : 'Off'}</span></button>
       </div>`;
   }
 
@@ -1463,6 +1748,7 @@ class DesignWorkspace {
         ${object.kind === 'text' ? textPropertiesMarkup(object) : ''}
         ${object.kind === 'image' ? `<label>Image fit<select data-object-property="imageFit"><option value="contain" ${object.imageFit === 'contain' ? 'selected' : ''}>Show whole image</option><option value="cover" ${object.imageFit === 'cover' ? 'selected' : ''}>Fill frame</option></select></label><label class="workspace-property--wide workspace-image-replace">Replace image<input class="visually-hidden" type="file" accept="image/*" data-image-replace /><span><i data-lucide="refresh-cw"></i> Choose another image</span></label>` : ''}
         ${object.kind === 'garment' ? garmentPropertiesMarkup(object) : ''}
+        ${object.kind === 'pattern-piece' ? `<div class="workspace-pattern-piece-info workspace-property--wide"><span>Cut ${escapeHtml(capitalize(object.cut?.mode ?? 'straight'))}</span><span>Seam allowance ${round(object.cut?.seamAllowance ?? 0)}%</span><span>${escapeHtml(object.pieceSide === 'a' ? 'Piece A' : 'Piece B')}</span></div>` : ''}
       </div>`;
   }
 
@@ -1488,6 +1774,10 @@ function createDefaultState(definition) {
     templateCategory: 'essentials',
     selectedIds: [],
     placementTargetId: null,
+    cutTool: null,
+    cutPrecision: 0.5,
+    cutSeamAllowance: 0.5,
+    reshapePieceId: null,
     panMode: false,
     artboard: {
       backgroundKind: 'white',
@@ -1655,7 +1945,284 @@ function createDrawingObject(tool) {
   };
 }
 
-function objectMarkup(object, selected) {
+function createCutPieces(object, cut) {
+  const sourceFrame = {
+    x: object.x,
+    y: object.y,
+    width: object.width,
+    height: object.height,
+    rotation: object.rotation,
+  };
+  const inheritedPaths = object.kind === 'pattern-piece' ? (object.clipPaths ?? []) : [];
+  const cutGroup = createId();
+  return ['a', 'b'].map((pieceSide) => {
+    const direction = pieceSide === 'a' ? -1.1 : 1.1;
+    return {
+      id: createId(),
+      kind: 'pattern-piece',
+      name: `${object.name} · cut ${pieceSide.toUpperCase()}`,
+      source: object.source,
+      x: clamp(sourceFrame.x + direction, 0, 100 - sourceFrame.width),
+      y: clamp(sourceFrame.y, 0, 100 - sourceFrame.height),
+      width: sourceFrame.width,
+      height: sourceFrame.height,
+      rotation: sourceFrame.rotation,
+      opacity: object.opacity ?? 100,
+      colour: object.colour ?? '#7856f3',
+      clipPaths: [...inheritedPaths, buildCutPiecePath(cut, pieceSide)],
+      cut: clone(cut),
+      cutGroup,
+      parentCutGroup: object.kind === 'pattern-piece' ? (object.cutGroup ?? null) : null,
+      pieceSide,
+      sourceFrame,
+      locked: false,
+      hidden: false,
+      flipped: object.flipped ?? false,
+    };
+  });
+}
+
+function createJoinedPiece(piece) {
+  const sourceFrame = clone(piece.sourceFrame);
+  return {
+    ...clone(piece),
+    ...sourceFrame,
+    id: createId(),
+    name: `${piece.name.replace(/ · cut [AB]$/, '')} · joined`,
+    clipPaths: piece.clipPaths.slice(0, -1),
+    cut: null,
+    cutGroup: piece.parentCutGroup ?? null,
+    parentCutGroup: null,
+    pieceSide: null,
+    locked: false,
+    hidden: false,
+  };
+}
+
+function isCuttableObject(object) {
+  return ['garment', 'image', 'pattern-piece'].includes(object?.kind) && Boolean(object?.source);
+}
+
+function sameSourceFrame(first, second) {
+  const a = first?.sourceFrame;
+  const b = second?.sourceFrame;
+  return Boolean(
+    a &&
+    b &&
+    first.source === second.source &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.rotation === b.rotation,
+  );
+}
+
+function createCutGeometry(mode, initialStart, initialEnd, precision, seamAllowance) {
+  let start = snapCutPoint(initialStart, precision);
+  let end = snapCutPoint(initialEnd, precision);
+  if (mode === 'straight') {
+    if (Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)) {
+      end = { ...end, y: start.y };
+    } else {
+      end = { ...end, x: start.x };
+    }
+  }
+  const [first, second] = lineRectangleIntersections(start, end);
+  start = snapPointToBoundary(first ?? start, precision);
+  end = snapPointToBoundary(second ?? end, precision);
+  const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const curveBend = mode === 'curve' ? 12 : 0;
+  const control = snapCutPoint(
+    {
+      x: midpoint.x - ((end.y - start.y) / distance) * curveBend,
+      y: midpoint.y + ((end.x - start.x) / distance) * curveBend,
+    },
+    precision,
+  );
+  return {
+    mode,
+    start,
+    end,
+    control,
+    seamAllowance: seamAllowance ?? 0,
+  };
+}
+
+function lineRectangleIntersections(start, end) {
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) {
+    return [];
+  }
+  const candidates = [];
+  const add = (x, y) => {
+    if (x >= -0.01 && x <= 100.01 && y >= -0.01 && y <= 100.01) {
+      const point = { x: clamp(x, 0, 100), y: clamp(y, 0, 100) };
+      if (!candidates.some((item) => Math.hypot(item.x - point.x, item.y - point.y) < 0.01)) {
+        candidates.push(point);
+      }
+    }
+  };
+  if (Math.abs(deltaX) > 0.01) {
+    add(0, start.y + ((0 - start.x) / deltaX) * deltaY);
+    add(100, start.y + ((100 - start.x) / deltaX) * deltaY);
+  }
+  if (Math.abs(deltaY) > 0.01) {
+    add(start.x + ((0 - start.y) / deltaY) * deltaX, 0);
+    add(start.x + ((100 - start.y) / deltaY) * deltaX, 100);
+  }
+  if (candidates.length < 2) {
+    return candidates;
+  }
+  let pair = [candidates[0], candidates[1]];
+  let greatestDistance = 0;
+  candidates.forEach((point, index) => {
+    candidates.slice(index + 1).forEach((other) => {
+      const distance = Math.hypot(point.x - other.x, point.y - other.y);
+      if (distance > greatestDistance) {
+        greatestDistance = distance;
+        pair = [point, other];
+      }
+    });
+  });
+  return pair;
+}
+
+function snapCutPoint(point, precision = 1) {
+  const step = Math.max(Number(precision) || 1, 0.01);
+  return {
+    x: clamp(Math.round(point.x / step) * step, 0, 100),
+    y: clamp(Math.round(point.y / step) * step, 0, 100),
+  };
+}
+
+function snapPointToBoundary(point, precision = 1) {
+  const snapped = snapCutPoint(point, precision);
+  const distances = [
+    { edge: 'left', value: snapped.x },
+    { edge: 'right', value: 100 - snapped.x },
+    { edge: 'top', value: snapped.y },
+    { edge: 'bottom', value: 100 - snapped.y },
+  ];
+  const nearest = distances.reduce((current, candidate) =>
+    candidate.value < current.value ? candidate : current,
+  );
+  if (nearest.edge === 'left') return { ...snapped, x: 0 };
+  if (nearest.edge === 'right') return { ...snapped, x: 100 };
+  if (nearest.edge === 'top') return { ...snapped, y: 0 };
+  return { ...snapped, y: 100 };
+}
+
+function cutLength(cut) {
+  return Math.hypot(cut.end.x - cut.start.x, cut.end.y - cut.start.y);
+}
+
+function boundaryPosition(point) {
+  if (point.y <= 0.01) return point.x;
+  if (point.x >= 99.99) return 100 + point.y;
+  if (point.y >= 99.99) return 200 + (100 - point.x);
+  return 300 + (100 - point.y);
+}
+
+function pointAtBoundaryPosition(position) {
+  const value = ((position % 400) + 400) % 400;
+  if (value <= 100) return { x: value, y: 0 };
+  if (value <= 200) return { x: 100, y: value - 100 };
+  if (value <= 300) return { x: 300 - value, y: 100 };
+  return { x: 0, y: 400 - value };
+}
+
+function boundaryPathClockwise(start, end) {
+  const startPosition = boundaryPosition(start);
+  let endPosition = boundaryPosition(end);
+  if (endPosition <= startPosition) {
+    endPosition += 400;
+  }
+  const points = [start];
+  [100, 200, 300, 400, 500, 600, 700].forEach((corner) => {
+    if (corner > startPosition + 0.01 && corner < endPosition - 0.01) {
+      points.push(pointAtBoundaryPosition(corner));
+    }
+  });
+  points.push(end);
+  return points;
+}
+
+function buildCutPiecePath(cut, pieceSide) {
+  const arc =
+    pieceSide === 'a'
+      ? boundaryPathClockwise(cut.start, cut.end)
+      : boundaryPathClockwise(cut.end, cut.start).reverse();
+  const outline = arc.map((point, index) => `${index ? 'L' : 'M'}${formatPoint(point)}`).join(' ');
+  const closingCut =
+    cut.mode === 'curve'
+      ? `Q${formatPoint(cut.control)} ${formatPoint(cut.start)}`
+      : `L${formatPoint(cut.start)}`;
+  return `${outline} ${closingCut} Z`;
+}
+
+function formatPoint(point) {
+  return `${round(point.x)} ${round(point.y)}`;
+}
+
+function cutGuidePath(cut) {
+  return cut.mode === 'curve'
+    ? `M${formatPoint(cut.start)} Q${formatPoint(cut.control)} ${formatPoint(cut.end)}`
+    : `M${formatPoint(cut.start)} L${formatPoint(cut.end)}`;
+}
+
+function cutToArtboardCoordinates(object, cut) {
+  const toArtboard = (point) => ({
+    x: object.x + (point.x / 100) * object.width,
+    y: object.y + (point.y / 100) * object.height,
+  });
+  return {
+    ...cut,
+    start: toArtboard(cut.start),
+    end: toArtboard(cut.end),
+    control: toArtboard(cut.control),
+  };
+}
+
+function patternPieceMarkup(object) {
+  const clipPaths = object.clipPaths ?? [];
+  const clipIds = clipPaths.map((_, index) => `clip-${object.id}-${index}`);
+  const definitions = clipPaths
+    .map(
+      (path, index) =>
+        `<clipPath id="${clipIds[index]}" clipPathUnits="userSpaceOnUse"><path d="${escapeAttribute(path)}" /></clipPath>`,
+    )
+    .join('');
+  let image = `<image href="${escapeAttribute(object.source)}" x="0" y="0" width="100" height="100" preserveAspectRatio="none" />`;
+  [...clipIds].reverse().forEach((id) => {
+    image = `<g clip-path="url(#${id})">${image}</g>`;
+  });
+  const cutGuide = object.cut
+    ? `<path class="workspace-pattern-piece__seam" d="${cutGuidePath(object.cut)}" />`
+    : '';
+  return `<div class="workspace-pattern-piece"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs>${definitions}</defs>${image}${cutGuide}</svg></div>`;
+}
+
+function cutAnchorMarkup(object) {
+  if (!object.cut) {
+    return '';
+  }
+  const anchors = [
+    ['start', object.cut.start],
+    ['end', object.cut.end],
+    ...(object.cut.mode === 'curve' ? [['control', object.cut.control]] : []),
+  ];
+  return anchors
+    .map(
+      ([anchor, point]) =>
+        `<button class="workspace-cut-anchor workspace-cut-anchor--${anchor}" type="button" data-cut-anchor="${anchor}" style="left:${point.x}%;top:${point.y}%" aria-label="Move ${anchor} cut point"></button>`,
+    )
+    .join('');
+}
+
+function objectMarkup(object, selected, showCutAnchors = false) {
   const style = [
     `left:${object.x}%`,
     `top:${object.y}%`,
@@ -1673,6 +2240,9 @@ function objectMarkup(object, selected) {
     const printZone = object.printZone ?? { x: 50, y: 50, width: 34, height: 16 };
     const printContent = garmentArtworkMarkup(object);
     content = `<div class="workspace-garment workspace-garment--mockup" data-texture="${escapeAttribute(object.texture ?? 'plain')}"><img class="workspace-garment__mockup" src="${escapeAttribute(object.source)}" alt="${escapeAttribute(object.name)} editable mockup" draggable="false" /><span class="workspace-garment__colour-wash" aria-hidden="true"></span><span class="workspace-garment__texture" aria-hidden="true"></span><span class="workspace-garment__print" style="--print-x:${printZone.x}%;--print-y:${printZone.y}%;--print-width:${printZone.width}%;--print-height:${printZone.height}%;--print-colour:${escapeAttribute(object.printColour ?? '#f7f2e8')};--print-scale:${object.printScale ?? 100}%">${printContent}</span></div>`;
+  }
+  if (object.kind === 'pattern-piece') {
+    content = patternPieceMarkup(object);
   }
   if (object.kind === 'text') {
     const textStyles = [
@@ -1707,7 +2277,8 @@ function objectMarkup(object, selected) {
   const selectedControls = selected
     ? `<span class="workspace-object__handle workspace-object__handle--nw" data-object-resize="nw" aria-hidden="true"></span><span class="workspace-object__handle workspace-object__handle--se" data-object-resize="se" aria-hidden="true"></span><span class="workspace-object__quick-actions" data-object-popover aria-label="${escapeAttribute(object.name)} quick actions"><button type="button" data-object-action="duplicate" aria-label="Duplicate ${escapeAttribute(object.name)}" title="Duplicate"><i data-lucide="copy"></i></button><button class="workspace-object__delete" type="button" data-object-action="delete" aria-label="Delete ${escapeAttribute(object.name)}" title="Delete"><i data-lucide="trash-2"></i></button></span>`
     : '';
-  return `<div class="workspace-object workspace-object--${escapeAttribute(object.kind)} ${state}" data-object-id="${object.id}" style="${style}" tabindex="0" role="button" aria-label="${escapeAttribute(object.name)}${object.locked ? ', locked' : ''}">${content}${selectedControls}</div>`;
+  const cutAnchors = showCutAnchors ? cutAnchorMarkup(object) : '';
+  return `<div class="workspace-object workspace-object--${escapeAttribute(object.kind)} ${state}" data-object-id="${object.id}" style="${style}" tabindex="0" role="button" aria-label="${escapeAttribute(object.name)}${object.locked ? ', locked' : ''}">${content}${cutAnchors}${selectedControls}</div>`;
 }
 
 function objectQuickActions(actions) {
@@ -1730,6 +2301,10 @@ function objectActionFromLabel(label) {
     Texture: 'open-fabrics',
     Pattern: 'open-fabrics',
     Measurements: 'open-measurements',
+    Cut: 'open-measurements',
+    Join: 'join-cut-pieces',
+    'Align seam': 'align-cut-pieces',
+    'Reshape cut': 'reshape-cut',
     Layer: 'open-layers',
     Properties: 'open-properties',
     Font: 'open-properties',
